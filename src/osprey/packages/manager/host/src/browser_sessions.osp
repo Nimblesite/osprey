@@ -1,23 +1,44 @@
 namespace registry_host;
+import registry::Bytes
+import registry::Digests
 
 /// Database half of [PACKAGE-HOSTED-AUTH]. The API sends only hashed browser cookies
 /// and encrypted provider tokens. The identity parameters come from provider verification.
 module BrowserSessions {
-    let binding = "b.issuer=$2 AND b.auth_subject=$3 AND b.provider_subject=$4"
+    fn binding(issuer, subject, github) = "b.issuer=${issuer} AND b.auth_subject=${subject} AND b.provider_subject=${github}"
     let eligibility = "b.provider='github' AND b.state='active' AND p.kind='human' AND p.state='active'"
     let live = "s.revoked_at IS NULL AND s.started_at<=statement_timestamp() AND s.started_at>statement_timestamp()-interval '12 hours' AND s.last_used_at<=clock_timestamp() AND s.last_used_at>statement_timestamp()-interval '30 minutes'"
     let samePrincipal = "p.id=s.principal_id AND p.credential_epoch=s.credential_epoch AND b.principal_id=s.principal_id"
     let principal = "registry.auth_bindings b JOIN registry.principals p ON p.id=b.principal_id"
     let claims = "s.cookie_digest=$1 AND b.id=s.binding_id AND " + samePrincipal + " AND " + eligibility + " AND " + live
 
+    fn insert(cookie, issuer, subject, github, envelope) = "INSERT INTO registry.browser_sessions(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at) SELECT gen_random_uuid(),${cookie},b.id,p.id,p.credential_epoch,${envelope},statement_timestamp(),statement_timestamp() FROM " + principal + " WHERE " + eligibility + " AND " + binding(issuer, subject, github) + " RETURNING id"
+
     /// Issue only for an approved and active binding, never by email or provider username.
-    export let issue = "INSERT INTO registry.browser_sessions(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at) SELECT gen_random_uuid(),$1,b.id,p.id,p.credential_epoch,$5,statement_timestamp(),statement_timestamp() FROM " + principal + " WHERE " + eligibility + " AND " + binding + " RETURNING id"
+    export fn issue() = insert("$1", "$2", "$3", "$4", "$5")
+
+    fn validIdentity(issuer, subject, github) = startsWith(issuer, "https://") && endsWith(issuer, "/auth/v1")
+        && byteLength(issuer) <= 320 && Bytes::canonicalUuid(subject)
+        && byteLength(github) > 0 && byteLength(github) <= 32 && !startsWith(github, "0") && Bytes::everyByte(github, Bytes::isDigit)
+
+    fn boundInsert(values, envelope) = {
+        let query = insert(Database::decoded(1), Database::decoded(2), Database::decoded(3) + "::uuid", Database::decoded(4), Database::decoded(5))
+        Success { value: Database::sessionIssueScript(values, query, listAppend(values, envelope)) }
+    }
+
+    /// Bind values through the extended protocol before an authenticated session exists.
+    export fn issueScript(cookie, issuer, subject, github, envelope) = match Digests::parse(cookie) {
+        Error { message } => Error { message: message }
+        Success => if !validIdentity(issuer, subject, github) || byteLength(envelope) < 1 || byteLength(envelope) > 65536 {
+            Error { message: "auth.session-identity" }
+        } else { boundInsert([cookie, issuer, subject, github], envelope) }
+    }
 
     /// Get the envelope for provider verification. A lookup never extends inactivity.
     export let lookup = "SELECT s.token_envelope FROM registry.browser_sessions s," + principal + " WHERE " + claims
 
     /// Recheck the verified provider identity and revocation in the update that accepts the session.
-    export let touch = "UPDATE registry.browser_sessions s SET last_used_at=GREATEST(s.last_used_at,statement_timestamp()) FROM " + principal + " WHERE " + claims + " AND " + binding + " RETURNING s.id,s.principal_id,s.credential_epoch"
+    export fn touch() = "UPDATE registry.browser_sessions s SET last_used_at=GREATEST(s.last_used_at,statement_timestamp()) FROM " + principal + " WHERE " + claims + " AND " + binding("$2", "$3", "$4") + " RETURNING s.id,s.principal_id,s.credential_epoch"
 
     /// Logout remains possible if the binding or provider is unavailable.
     export let revoke = "UPDATE registry.browser_sessions SET revoked_at=GREATEST(last_used_at,statement_timestamp()),token_envelope=NULL WHERE cookie_digest=$1 AND revoked_at IS NULL RETURNING id"

@@ -28,8 +28,10 @@ module Database {
 
     export fn decoded(index) = "convert_from(decode($${index}, 'hex'), 'UTF8')"
 
-    fn contextSql() = "SELECT " + join(mapList(range(0, 5) |> toList, fn(i) =>
-            "set_config('registry.${listGet(["principal_id", "session_id", "organization_id", "auth_subject", "authority_epoch"], i) ?: ""}', ${decoded(i + 1)}, true)"), ", ")
+    fn settingsSql(keys) = "SELECT " + join(mapList(range(0, length(keys)) |> toList, fn(i) =>
+        "set_config('registry.${listGet(keys, i) ?: ""}', ${decoded(i + 1)}, true)"), ", ")
+
+    fn contextSql() = settingsSql(["principal_id", "session_id", "organization_id", "auth_subject", "authority_epoch"])
 
     fn contextValues(ctx: Context) = [ctx.principalId, ctx.sessionId, ctx.organizationId, ctx.authSubject, "${ctx.authorityEpoch}"]
 
@@ -78,12 +80,18 @@ module Database {
 
     export fn publicCatalog() = executed(mountedConnection("catalog"), catalogScript())
 
-    /// No registry principal exists before login. Bind this transaction to one state/browser pair.
-    export fn loginScript(flowState, browser, statement, values) =
+    fn preAuthScript(role, keys, scope, statement, values) =
         "BEGIN; SET LOCAL search_path=pg_catalog; SET LOCAL statement_timeout='3s'; SET LOCAL lock_timeout='2s';\n\\o /dev/null\n"
-        + roleGuard + "SELECT 1/((current_user='registry_login_runtime')::int);\n"
-        + "SELECT set_config('registry.login_state', " + decoded(1) + ", true), set_config('registry.login_browser', " + decoded(2) + ", true) "
-        + binding([flowState, browser]) + "\\o\n" + statement + " " + binding(values) + "COMMIT;\n"
+        + roleGuard + "SELECT 1/((current_user='${role}')::int);\n"
+        + settingsSql(keys) + " " + binding(scope) + "\\o\n" + statement + " " + binding(values) + "COMMIT;\n"
+
+    /// No registry principal exists before login. Bind this transaction to one state/browser pair.
+    export fn loginScript(flowState, browser, statement, values) = preAuthScript("registry_login_runtime",
+        ["login_state", "login_browser"], [flowState, browser], statement, values)
+
+    /// The issuer role can mint one cookie for exactly the verified provider identity.
+    export fn sessionIssueScript(scope, statement, values) = preAuthScript("registry_session_issuer",
+        ["session_digest", "session_issuer", "session_subject", "session_provider"], scope, statement, values)
 
     /// Login storage runs as its own non-owner principal. Raw driver errors stay private.
     export fn login(source) = executed(mountedConnection("login"), source)

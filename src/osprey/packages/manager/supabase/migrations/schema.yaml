@@ -1,6 +1,6 @@
 # Implements [PACKAGE-OWNERSHIP-DATABASE] and [PACKAGE-OWNERSHIP-ADMIN].
 # DataProviderMigrate owns DDL. PostgreSQL only; no hand-authored SQL overlay.
-# Bootstrap is deliberately closed: FORCE RLS, no ownership policies or runtime grants.
+# Bootstrap forces RLS and grants no runtime privileges. Ownership writes stay closed.
 # Hosted write readiness must reject this state with ownership.not-ready.
 name: osprey_registry_ownership
 tables:
@@ -15,7 +15,18 @@ tables:
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_principals_id_kind, columns: [id, kind] }
-    rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: session_issuer_principal
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            current_setting('session_authorization') = 'registry_session_issuer'
+            AND kind = 'human' AND state = 'active'
+            AND EXISTS (SELECT 1 FROM registry.auth_bindings b WHERE b.principal_id = principals.id)
 
   - name: auth_bindings
     schema: registry
@@ -35,7 +46,20 @@ tables:
       - { name: uq_auth_binding_active_subject, columns: [issuer, auth_subject], isUnique: true, filter: "state = 'active'" }
     foreignKeys:
       - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
-    rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: session_issuer_binding
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: >-
+            current_setting('session_authorization') = 'registry_session_issuer'
+            AND provider = 'github' AND state = 'active'
+            AND issuer = current_setting('registry.session_issuer')
+            AND auth_subject::text = current_setting('registry.session_subject')
+            AND provider_subject = current_setting('registry.session_provider')
 
   - name: organizations
     schema: registry
@@ -308,4 +332,28 @@ tables:
     foreignKeys:
       - { columns: [binding_id], referencedSchema: registry, referencedTable: auth_bindings, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
       - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
-    rowLevelSecurity: { enabled: true, forced: true, policies: [] }
+    rowLevelSecurity:
+      enabled: true
+      forced: true
+      policies:
+        - name: session_issuer_result
+          permissive: true
+          operations: [Select]
+          roles: []
+          using: &session_issuance >-
+            current_setting('session_authorization') = 'registry_session_issuer'
+            AND cookie_digest = current_setting('registry.session_digest')
+            AND EXISTS (SELECT 1 FROM registry.auth_bindings b
+            WHERE b.id = browser_sessions.binding_id AND b.principal_id = browser_sessions.principal_id)
+            AND EXISTS (SELECT 1 FROM registry.principals p WHERE p.id = browser_sessions.principal_id
+            AND p.credential_epoch = browser_sessions.credential_epoch)
+        - name: session_issuer_insert
+          permissive: true
+          operations: [Insert]
+          roles: []
+          withCheck: *session_issuance
+        - name: session_issuer_new_session
+          permissive: false
+          operations: [Insert]
+          roles: []
+          withCheck: "started_at = statement_timestamp() AND last_used_at = started_at AND revoked_at IS NULL"

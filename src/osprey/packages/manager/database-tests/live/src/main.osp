@@ -29,6 +29,8 @@ let fixtureClient = "psql -XqAt --no-password -p 18873 -U registry_check -d post
 
 fn onFixture(command) = perform Host::Process.run("case \"$PGHOST\" in /tmp/osprey-registry.*) " + command + ";; *) exit 1;; esac")
 
+fn fixtureScript(client, script) = onFixture("printf '%s' " + Host::shellWord(script) + " | " + client)
+
 fn execute(sql) = {
     let tx = "BEGIN; SET LOCAL search_path TO registry, pg_catalog; " + seed() + sql + "; ROLLBACK;"
     onFixture(fixtureClient + Host::shellWord(tx))
@@ -112,7 +114,7 @@ fn fixtureSource(digest) = if digest == fixtureDigest {
 } else { Success { value: "{}" } }
 
 fn fixtureCatalog() = {
-    let result = onFixture("printf '%s' " + Host::shellWord(Database::catalogScript()) + " | psql -XqAt -v ON_ERROR_STOP=1 -U registry_catalog_reader")
+    let result = fixtureScript("psql -XqAt -v ON_ERROR_STOP=1 -U registry_catalog_reader", Database::catalogScript())
     if result.status == 0 { Success { value: trim(result.stdout) } } else { Error { message: "database.transaction-failed" } }
 }
 
@@ -145,7 +147,8 @@ fn catalogListener() = {
     checkAll("restricted PostgreSQL login behind public HTTP ingress", [created.status == 0, (served ?: -1) == 0])
 }
 
-let sessionSetup = "INSERT INTO auth_bindings(id,principal_id,issuer,provider,provider_subject,auth_subject,state,verified_at) VALUES (md5('binding')::uuid,md5('person1')::uuid,'https://supabase.example.test/auth/v1','github','421',md5('subject')::uuid,'active',now());"
+let sessionSubject = "b5e3374e-43f6-5448-52f7-751dfc529100"
+let sessionSetup = "INSERT INTO auth_bindings(id,principal_id,issuer,provider,provider_subject,auth_subject,state,verified_at) VALUES (md5('binding')::uuid,md5('person1')::uuid,'https://supabase.example.test/auth/v1','github','421','${sessionSubject}','active',now());"
 let sessionCookie = "'sha256:' || repeat('1',64)"
 let sessionIssuer = "'https://supabase.example.test/auth/v1'"
 let sessionIdentity = "md5('subject')::uuid,'421'"
@@ -154,9 +157,9 @@ fn sessionStatement(name, types, sql) = "PREPARE ${name}(${types}) AS ${sql};"
 
 fn sessionSql() = join([
     sessionSetup,
-    sessionStatement("issue", "text,text,uuid,text,text", BrowserSessions::issue),
+    sessionStatement("issue", "text,text,uuid,text,text", BrowserSessions::issue()),
     sessionStatement("lookup", "text", BrowserSessions::lookup),
-    sessionStatement("touch", "text,text,uuid,text", BrowserSessions::touch),
+    sessionStatement("touch", "text,text,uuid,text", BrowserSessions::touch()),
     sessionStatement("revoke", "text", BrowserSessions::revoke)
 ], "")
 
@@ -181,6 +184,52 @@ fn sessionRun(suffix, expectedLines, expected) = {
     result.status == 0 && length(split(output, "\n") ?: []) == expectedLines && endsWith(output, expected)
 }
 
+let issuerRole = "registry_session_issuer"
+let issuerGrants = "CREATE ROLE ${issuerRole} LOGIN NOSUPERUSER NOBYPASSRLS; GRANT USAGE ON SCHEMA registry TO ${issuerRole}; GRANT SELECT(id,principal_id,issuer,provider,provider_subject,auth_subject,state) ON registry.auth_bindings TO ${issuerRole}; GRANT SELECT(id,kind,state,credential_epoch) ON registry.principals TO ${issuerRole}; GRANT INSERT(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at), SELECT(id) ON registry.browser_sessions TO ${issuerRole};"
+
+fn issuerScope(issuer, cookie) = sessionSql() + issuerGrants + "SET LOCAL SESSION AUTHORIZATION ${issuerRole}; SET LOCAL registry.session_issuer = '${issuer}'; SET LOCAL registry.session_subject = '${sessionSubject}'; SET LOCAL registry.session_provider = '421'; SET LOCAL registry.session_digest = '${cookie}';"
+
+let issuerOrigin = "https://supabase.example.test/auth/v1"
+fn issuerDigest() = "sha256:" + (repeat("1", 64) ?: "")
+
+fn issuerCreated() = {
+    let result = execute(issuerScope(issuerOrigin, issuerDigest()) + issued() + "SELECT count(id) FROM browser_sessions;")
+    let lines = split(trim(result.stdout), "\n") ?: []
+    result.status == 0 && length(lines) == 2 && Bytes::canonicalUuid(listGet(lines, 0) ?: "") && (listGet(lines, 1) ?: "") == "1"
+}
+
+fn restrictedSessionIssue() = checkAll("only a scoped issuer can create a correctly bound session", [
+    issuerCreated(),
+    answer(issuerScope("https://wrong.example.test/auth/v1", issuerDigest()) + issued(), ""),
+    refused(issuerScope(issuerOrigin, "sha256:" + (repeat("2", 64) ?: "")) + issued(), "42501"),
+    refused(issuerScope(issuerOrigin, issuerDigest()) + "INSERT INTO browser_sessions(id,cookie_digest,binding_id,principal_id,credential_epoch,token_envelope,started_at,last_used_at) VALUES (gen_random_uuid(),${sessionCookie},md5('binding')::uuid,md5('person1')::uuid,1,'sealed',now()-interval '1 hour',now()-interval '1 hour');", "42501"),
+    refused(issuerScope(issuerOrigin, issuerDigest()) + lookup, "42501")
+])
+
+let issuerClient = "psql -XqAt --no-password -U ${issuerRole} -v ON_ERROR_STOP=1"
+
+fn issueWithRole(client, subject, digest, envelope) = match BrowserSessions::issueScript(digest, issuerOrigin, subject, "421", envelope) {
+    Success { value } => fixtureScript(client, value)
+    Error { message } => Host::Run { status: 1, stdout: "", stderr: message }
+}
+
+fn sessionIssuerConnection() = {
+    let setup = issuerGrants + " SET search_path=registry,pg_catalog; INSERT INTO principals(id,kind,state,credential_epoch,created_at) VALUES (md5('person1')::uuid,'human','active',1,now()); " + sessionSetup
+    let created = onFixture(fixtureClient + Host::shellWord(setup))
+    let envelope = "fixture-sealed-opaque-envelope"
+    let wrong = issueWithRole(issuerClient, "11111111-1111-4111-8111-111111111111", issuerDigest(), envelope)
+    let refusedRole = issueWithRole(loginClient, sessionSubject, issuerDigest(), envelope)
+    let good = issueWithRole(issuerClient, sessionSubject, issuerDigest(), envelope)
+    let repeated = issueWithRole(issuerClient, sessionSubject, issuerDigest(), envelope)
+    let stored = onFixture(fixtureClient + Host::shellWord("SELECT token_envelope FROM registry.browser_sessions WHERE cookie_digest = ${sessionCookie}"))
+    let cleanup = onFixture(fixtureClient + Host::shellWord("DELETE FROM registry.browser_sessions WHERE cookie_digest = ${sessionCookie}; DELETE FROM registry.auth_bindings WHERE id = md5('binding')::uuid; DELETE FROM registry.principals WHERE id = md5('person1')::uuid; DROP OWNED BY ${issuerRole}; DROP ROLE ${issuerRole};"))
+    checkAll("restricted libpq issuer transaction pins its role and does not duplicate sessions", [
+        created.status == 0, wrong.status == 0 && trim(wrong.stdout) == "", refusedRole.status != 0,
+        good.status == 0 && Bytes::canonicalUuid(trim(good.stdout)), repeated.status != 0,
+        stored.status == 0 && trim(stored.stdout) == envelope, cleanup.status == 0
+    ])
+}
+
 fn sessionDenied(mutation) = {
     let result = execute(sessionSql() + issued() + mutation + lookup + "EXECUTE touch(${sessionCookie},${sessionIssuer},${sessionIdentity}); SELECT 'checked';")
     result.status == 0 && length(split(trim(result.stdout), "\n") ?: []) == 2 && endsWith(trim(result.stdout), "checked")
@@ -200,7 +249,7 @@ let roleSetup = "CREATE ROLE registry_login_runtime LOGIN NOSUPERUSER NOBYPASSRL
 let loginClient = "psql -XqAt --no-password -U registry_login_runtime -v ON_ERROR_STOP=1"
 
 fn loginRun(script) = match script {
-    Success { value } => onFixture("printf '%s' " + Host::shellWord(value) + " | " + loginClient)
+    Success { value } => fixtureScript(loginClient, value)
     Error { message } => Host::Run { status: 1, stdout: "", stderr: message }
 }
 
@@ -318,6 +367,8 @@ fn expectLogin(client, edge) = match httpGetResponse(client, HostedLogin::startP
 fn suites() = {
     test("restricted pre-authentication connection", restrictedLoginJourney)
     test("live browser session identity and logout", stableSessionChecks)
+    test("restricted browser session issuance", restrictedSessionIssue)
+    test("session issuer libpq connection", sessionIssuerConnection)
     test("live browser session expiry and revocation", sessionLifetimeChecks)
     test("browser sessions start closed", fn() => checkAll("browser sessions use forced row security", [answer("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid = 'registry.browser_sessions'::regclass", "t")]))
     test("verified public catalog", publicCatalog)
