@@ -1,6 +1,6 @@
 # Package Registry Deployment and Ownership
 
-**Status:** normative delivery target; hosted authentication, ownership enforcement and deployment are not implemented. This completes the operational and tenancy requirements of [plan 0020](../../plans/0020-package-manager.md). The [rollout plan](../../plans/0020-package-manager.md) defines sequencing and required evidence. Existing [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) remain mandatory.
+**Status.** The hosted API implements public catalog reads and browser sign-in, session verification, refresh and logout. [Plan 0020](../../plans/0020-package-manager.md) tracks ownership enforcement, publication and production rollout evidence. The [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) apply to every accepted release.
 
 ## Security boundary `[PACKAGE-HOSTED-BOUNDARY]`
 
@@ -21,6 +21,7 @@ flowchart LR
     LB --> API["Osprey Package Manager API on Cloud Run"]
     API -->|Sessions and GitHub OAuth| Auth["Supabase Auth"]
     API -->|Catalog, releases, publisher attribution and grants| DB["Supabase PostgreSQL with RLS"]
+    API -->|Seal OAuth verifiers and provider credentials| KMS["Google Cloud KMS"]
     API -->|Queue authorized publication| Worker["Isolated publication workers"]
     Worker -->|Fetch bound commit| GitHub["GitHub App"]
     Worker --> Verify["Independent builders, signers and witnesses"]
