@@ -62,6 +62,11 @@ export interface ModuleNode {
   readonly kind?: string;
 }
 
+/** A workspace project's root node, whose children load from the compiler and package client. */
+export type ProjectNode = ModuleNode & { readonly projectRoot: string };
+
+const isProject = (node: ModuleNode): node is ProjectNode => node.projectRoot !== undefined;
+
 function isDeclaration(item: any): item is Declaration {
   return typeof item?.kind === "string" && typeof item?.name === "string" &&
     typeof item?.source === "string" && Number.isSafeInteger(item?.line) && Number.isSafeInteger(item?.column);
@@ -92,7 +97,7 @@ function stateNode(parent: ModuleNode, key: string, label: string, detail: strin
 
 function fileNode(parent: ModuleNode, root: string, file: string): ModuleNode {
   return {
-    id: `${parent.id}/${file}`, parent, label: path.relative(root, file) || path.basename(file),
+    id: `${parent.id}/${file}`, parent, label: path.relative(root, file),
     icon: "file-code", location: { file, line: 1, column: 0 },
   };
 }
@@ -208,9 +213,9 @@ function dependencyNodes(self: ModuleNode, packages: Loaded<PackageGraph>): read
 
 /** The groups under one project, from what the compiler and package client answered. */
 export function projectChildren(
-  project: ModuleNode, graph: Loaded<SourceGraph>, packages: Loaded<PackageGraph>,
+  project: ProjectNode, graph: Loaded<SourceGraph>, packages: Loaded<PackageGraph>,
 ): ModuleNode[] {
-  const root = project.projectRoot ?? "";
+  const root = project.projectRoot;
   const group = (key: string, label: string, icon: string) =>
     ({ id: `${project.id}/${key}`, parent: project, label, icon }) as ModuleNode;
   const dependencies = attach(group("dependencies", "Dependencies", "package"), (self) =>
@@ -331,7 +336,7 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
       return (await this.deps.projectRoots()).map((root) =>
         ({ id: root, label: path.basename(root), projectRoot: root, icon: "project", description: root }));
     }
-    if (node.projectRoot === undefined) {
+    if (!isProject(node)) {
       const shown = arrange(node.children ?? [], this.sortOrder, this.filterText);
       return shown.length || !node.children?.length ? shown : [stateNode(node, "no-match", "No matches", this.filterText, "info")];
     }
@@ -344,8 +349,8 @@ export class ModuleExplorerProvider implements TreeDataProvider<ModuleNode> {
     return Promise.resolve(window.withProgress({ location: { viewId: MODULE_EXPLORER_VIEW } }, () => work));
   }
 
-  private async load(project: ModuleNode): Promise<ModuleNode[]> {
-    const root = project.projectRoot ?? "";
+  private async load(project: ProjectNode): Promise<ModuleNode[]> {
+    const root = project.projectRoot;
     if (!this.deps.trusted()) {
       const files = await this.deps.plainSources(root);
       return [

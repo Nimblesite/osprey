@@ -21,9 +21,11 @@ suite("package frontend wire contract", () => {
   });
 
   test("non-JSON and wrong-shape stdout is not a report", () => {
-    for (const stdout of ["", "status: 0", "not json", "[]", '{"lines":[]}', '{"status":0}', '{"lines":"x","status":0}', '{"lines":[1],"status":0}', '{"lines":[],"status":"0"}']) {
+    for (const stdout of ["", "status: 0", "not json", "[]", '{"lines":[]}', '{"status":0}', '{"lines":"x","status":0}', '{"lines":[1],"status":0}', '{"lines":[],"status":"0"}', "{ not json", '{"lines":["cut']) {
       assert.strictEqual(parseFrontendReport(stdout), undefined, stdout);
     }
+    assert.deepStrictEqual(parseFrontendReport('{"lines":["added @a/b"],"status":0}\n{"lines":["cut\nstatus: 0\n'),
+      { lines: ["added @a/b"], status: 0 }, "a truncated JSON line after the report is skipped, not fatal");
   });
 
   test("failure lines carry the CLI's stable reason codes through", () => {
@@ -39,5 +41,18 @@ suite("package subprocess failures", () => {
       return { stdin: { end() {} } };
     }) as any };
     await assert.rejects(runFrontendCommand("frontend", "--json add @a/b", "/tmp", spawn), /signal/);
+  });
+
+  test("a frontend that answers without a report rejects with what it printed", async () => {
+    const answering = (stdout: string, stderr: string) => ({ execFile: ((_exe: unknown, _args: unknown, _options: unknown, callback: Function) => {
+      callback(null, stdout, stderr);
+      return { stdin: { end() {} } };
+    }) as any });
+    await assert.rejects(runFrontendCommand("frontend", "--json add @a/b", "/tmp", answering("usage: osprey-pkg\n", "")),
+      /did not answer with a JSON report: usage: osprey-pkg$/, "stdout explains a silent stderr");
+    await assert.rejects(runFrontendCommand("frontend", "--json add @a/b", "/tmp", answering("partial", "lock busy\n")),
+      /did not answer with a JSON report: lock busy$/, "stderr explains the failure first");
+    const report = await runFrontendCommand("frontend", "--json add @a/b", "/tmp", answering('{"lines":["added @a/b"],"status":0}\n', ""));
+    assert.deepStrictEqual(report, { lines: ["added @a/b"], status: 0 });
   });
 });
