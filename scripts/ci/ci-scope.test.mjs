@@ -94,8 +94,14 @@ test('extension tests receive and reuse the build job\'s complete bundle', () =>
   const prerequisites = testsMk.match(/^_test_vscode_extension:(.*)$/m)?.[1] ?? ''
   assert.match(prerequisites, /\b_vsix_verify\b/)
   assert.doesNotMatch(prerequisites, /\b_vsix_bundle\b/)
-  assert.ok(testRecipe.indexOf('$(MAKE) _vsix_bundle') >= 0)
-  assert.ok(testRecipe.indexOf('$(MAKE) _vsix_bundle') < testRecipe.indexOf('$(MAKE) _test_vscode_extension'))
+  // [REPO-SPLIT] The tests stage the laid package manager beside the shipped bundle; the shipped
+  // bundle itself carries none of it.
+  assert.ok(testRecipe.indexOf('$(MAKE) _vsix_bundle_packages') >= 0)
+  assert.ok(testRecipe.indexOf('$(MAKE) _vsix_bundle_packages') < testRecipe.indexOf('$(MAKE) _test_vscode_extension'))
+  assert.ok(testRecipe.indexOf('$(MAKE) downstream') < testRecipe.indexOf('$(MAKE) _vsix_bundle_packages'))
+  const shipped = readFileSync('scripts/make/extension.mk', 'utf8').match(/^_vsix_bundle:[^\n]*\n(?:\t[^\n]*\n)+/m)?.[0] ?? ''
+  assert.ok(shipped.includes('workbench.wasm'), shipped)
+  assert.doesNotMatch(shipped, /osprey-pkg|osprey-registry|package-workspace|packages\/manager/)
   for (const required of [/name: Restore bundled extension assets/, /chmod \+x[^\n]*target\/osprey-pkg/,
     /chmod \+x[^\n]*src\/toolchain\/vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extensionJob, required)
 })

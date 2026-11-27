@@ -152,23 +152,22 @@ _vsix_verify:
 # whatever `.vscodeignore` leaves behind and reports success either way, so a
 # packaging regression is invisible until the installed extension quietly falls
 # back to whatever `osprey` is on PATH. Same assertion as the `vsix` job in
-# .github/workflows/release.yml.
+# .github/workflows/release.yml. VSIX_PACKAGES=1 packages the extension's CI test VSIX, which also
+# carries the laid package manager `_vsix_bundle_packages` staged [REPO-SPLIT].
+VSIX_PACKAGES ?=
 _vsix_package: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run package
 	@set -e; VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
 	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey" || \
 	  { echo "FAIL: $$VSIX carries no extension/bin/$(EXT_PLATFORM)/osprey"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-pkg" || \
-	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/package-workspace.wasm" || \
-	  { echo "FAIL: $$VSIX carries no package workspace WASM"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/workbench.wasm" || \
 	  { echo "FAIL: $$VSIX carries no workbench WASM"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/workbench/lessons/catalogue.json" || \
 	  { echo "FAIL: $$VSIX carries no workbench lessons"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-registry" || \
-	  { echo "FAIL: $$VSIX carries no local registry server"; exit 1; }; \
+	if [ -n "$(VSIX_PACKAGES)" ]; then for PART in osprey-pkg package-workspace.wasm osprey-registry; do \
+	  unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/$$PART" || \
+	    { echo "FAIL: the CI test VSIX $$VSIX carries no $$PART"; exit 1; }; done; fi; \
 	! unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/" || \
 	  { echo "FAIL: $$VSIX bundles registry packages; the VSIX carries no packages"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \

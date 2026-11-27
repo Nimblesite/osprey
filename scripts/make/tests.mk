@@ -463,7 +463,7 @@ _test_vscode_extension: _vsix_package_design _vsix_verify $(EXT_NODE_DEPS)
 	    --coverage-reporter text-summary --coverage-reporter json-summary --coverage-reporter html 2>&1 | tee -a test.log
 # The VS Code CLI otherwise waits for an interactive install prompt on WSL.
 	@echo "==> [vscode-extension] testing the installed VSIX and its bundled compiler..."
-	$(MAKE) _vsix_package
+	$(MAKE) _vsix_package VSIX_PACKAGES=1
 	cd $(EXT_DIR) && set -o pipefail && DONT_PROMPT_WSL_INSTALL=1 npm run test:vsix 2>&1 | tee -a test.log
 
 # Gates EVERY metric the summary reports, not lines alone. Lines-only was the
