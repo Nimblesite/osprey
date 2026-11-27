@@ -224,9 +224,11 @@ fn branches_and_bindings_become_matches_and_blocks() {
 
 #[test]
 fn definitions_carry_their_types_documentation_and_visibility() {
-    let source = "/-- Twice\n   `x`, closed *) early. -/\ndef twice (x : Float) : Float := 2 * x\n\n/-- Hidden. -/\nprivate def k : Float := 3\ndef limit : Float := k\ndef near (x y : Float) : Bool := twice x < limit\n/-- -/\ndef same (b : Bool) : Bool := b\n";
+    let source = "/-- Twice\n   `x`, closed *) early. -/\ndef twice (x : Float) : Float := 2 * x\n\n/-- Hidden. -/\nprivate def k : Float := 3\ndef limit : Float := k\ndef near (x y : Float) : Bool := twice x < limit\n/-- -/\ndef same (b : Bool) : Bool := b\n/-- Halves `x`.\n  # Examples\n  ```osprey\n  print \"${half 4.0}\"\n  ```\n-/\ndef half (x : Float) : Float := x / 2\n";
     let lines = [
-        "(** Twice `x`, closed * ) early. *)",
+        "(** Twice",
+        "`x`, closed * ) early.",
+        "*)",
         "export twice (x: float) = 2.0 * x",
         "",
         "(** Hidden. *)",
@@ -240,6 +242,14 @@ fn definitions_carry_their_types_documentation_and_visibility() {
         "",
         "(** `same`, generated from Case.lean. *)",
         "export same (b: bool) = b",
+        "",
+        "(** Halves `x`.",
+        "# Examples",
+        "```osprey",
+        "print \"${half 4.0}\"",
+        "```",
+        "*)",
+        "export half (x: float) = x / 2.0",
     ];
     assert_eq!(body(source), lines);
 }
