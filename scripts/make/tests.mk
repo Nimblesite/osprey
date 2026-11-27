@@ -46,18 +46,28 @@ _test_gpt2_parity: _gpt2_weights
 
 # Every crate under src/toolchain/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
+# Every workspace member, as its path under src/toolchain: the Rust gate walks
+# these, so a crate outside crates/ (tree-sitter-osprey) is gated too (#232).
+RUST_WORKSPACE_MEMBERS = sed -n '/^members = \[/,/^\]/p' src/toolchain/Cargo.toml | grep -o '"[^"]*"' | tr -d '"'
+# zed-extension is Zed's WASM host boundary: lib.rs is calls into Zed's host
+# imports, which cannot execute outside Zed; its launch policy (command.rs) is
+# unit-tested and its real stdio coverage belongs to the osprey-lsp suite.
+RUST_COV_EXEMPT ?= zed-extension
 _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f $(RUST_LCOV) ]; then echo "[rust] FAIL: $(RUST_LCOV) not produced"; exit 1; fi; \
-	fail=0; \
-	for manifest in src/toolchain/crates/*/Cargo.toml; do \
-	  crate=$${manifest%/Cargo.toml}; crate=$${crate#src/toolchain/crates/}; \
-	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
-	    echo "[rust] $$crate FAIL: missing coverage threshold"; fail=1; }; \
-	done; \
+	fail=0; members=$$($(RUST_WORKSPACE_MEMBERS)); \
 	for crate in $$(jq -er '.projects.rust | keys[]' "$(COVERAGE_THRESHOLDS_FILE)"); do \
+	  printf '%s\n' $$members | grep -q "\(^\|/\)$$crate$$" || { \
+	    echo "[rust] $$crate FAIL: gated in $(COVERAGE_THRESHOLDS_FILE) but not a workspace member"; fail=1; }; \
+	done; \
+	for member in $$members; do \
+	  crate=$${member##*/}; \
+	  if printf '%s\n' $(RUST_COV_EXEMPT) | grep -qx "$$crate"; then echo "[rust] $$crate EXEMPT (RUST_COV_EXEMPT)"; continue; fi; \
+	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
+	    echo "[rust] $$crate FAIL: workspace member $$member is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in RUST_COV_EXEMPT -- an ungated crate cannot regress visibly"; fail=1; continue; }; \
 	  threshold=$$(jq -er --arg c "$$crate" '.projects.rust[$$c].threshold | if type == "number" and . >= 95 and . <= 100 and floor == . then . else error("Rust coverage threshold must be an integer in 95..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
-	  set -- $$(awk -F: -v c="$$crate" 'index($$0,"SF:")==1{in_c=index($$2,"/crates/" c "/")>0} in_c&&/^LH:/{h+=$$2} in_c&&/^LF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
+	  set -- $$(awk -F: -v c="/src/toolchain/$$member/" 'index($$0,"SF:")==1{in_c=index($$2,c)>0} in_c&&/^LH:/{h+=$$2} in_c&&/^LF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
 	  lh=$$1; lf=$$2; \
 	  if [ "$$lf" -eq 0 ]; then echo "[rust] $$crate FAIL: no lines found in $(RUST_LCOV)"; fail=1; continue; fi; \
 	  pct=$$(awk "BEGIN{printf \"%.1f\", $$lh/$$lf*100}"); \

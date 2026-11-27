@@ -310,34 +310,51 @@ test('malformed detection input fails the gate instead of skipping required jobs
   assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\nprograms=false\n$/)
 }))
 
-function rustCoverageFixture(entries, covered = 100) {
+// A workspace of `crates/one`, `crates/two` and `outside`, a member beyond
+// crates/ like tree-sitter-osprey: the gate walks the manifest's members (#232).
+const RUST_MEMBERS = ['crates/one', 'crates/two', 'outside']
+
+function rustCoverageFixture(entries, covered = 100, extra = []) {
   return withTempDir('rust-coverage', (root) => {
-    for (const name of ['one', 'two']) {
-      mkdirSync(join(root, 'src', 'toolchain', 'crates', name), { recursive: true })
-      writeFileSync(join(root, 'src', 'toolchain', 'crates', name, 'Cargo.toml'), `[package]\nname = "${name}"\n`)
-    }
+    const toolchain = join(root, 'src', 'toolchain')
+    mkdirSync(toolchain, { recursive: true })
+    writeFileSync(join(toolchain, 'Cargo.toml'),
+      `[workspace]\nmembers = [\n${RUST_MEMBERS.map(member => `    "${member}",`).join('\n')}\n]\n`)
     writeFileSync(join(root, 'thresholds.json'), JSON.stringify({ projects: { rust: entries } }))
-    writeFileSync(join(root, 'lcov.info'), ['one', 'two'].map(name =>
-      `SF:${root}/crates/${name}/src/lib.rs\nLF:100\nLH:${covered}\nend_of_record\n`).join(''))
+    writeFileSync(join(root, 'lcov.info'), RUST_MEMBERS.map(member =>
+      `SF:${toolchain}/${member}/src/lib.rs\nLF:100\nLH:${covered}\nend_of_record\n`).join(''))
     return spawnSync('make', ['-f', resolve('scripts/make/tests.mk'), '_coverage_check_rust',
-      'COVERAGE_THRESHOLDS_FILE=thresholds.json', 'RUST_LCOV=lcov.info'], { cwd: root, encoding: 'utf8' })
+      'COVERAGE_THRESHOLDS_FILE=thresholds.json', 'RUST_LCOV=lcov.info', 'RUST_COV_EXEMPT=', ...extra],
+      { cwd: root, encoding: 'utf8' })
   })
 }
 
 test('Rust coverage gate rejects unlisted crates and invalid thresholds', () => {
   const gate = { threshold: 95, language: 'rust' }
-  const missing = rustCoverageFixture({ one: gate })
+  const all = { one: gate, two: gate, outside: gate }
+  const missing = rustCoverageFixture({ one: gate, outside: gate })
   assert.notEqual(missing.status, 0, missing.stdout)
-  assert.match(missing.stdout, /two FAIL: missing coverage threshold/)
+  assert.match(missing.stdout, /two FAIL: workspace member crates\/two is neither gated/)
+  const beyond = rustCoverageFixture({ one: gate, two: gate })
+  assert.notEqual(beyond.status, 0, beyond.stdout)
+  assert.match(beyond.stdout, /outside FAIL: workspace member outside is neither gated/,
+    'a member outside crates/ is gated like any other')
+  const exempt = rustCoverageFixture({ one: gate, two: gate }, 100, ['RUST_COV_EXEMPT=outside'])
+  assert.equal(exempt.status, 0, exempt.stdout + exempt.stderr)
+  assert.match(exempt.stdout, /outside EXEMPT/)
+  const stale = rustCoverageFixture({ ...all, gone: gate })
+  assert.notEqual(stale.status, 0, stale.stdout)
+  assert.match(stale.stdout, /gone FAIL: gated in thresholds.json but not a workspace member/)
   for (const threshold of [null, 0, 94, '95', 101]) {
-    const invalid = rustCoverageFixture({ one: gate, two: { threshold } })
+    const invalid = rustCoverageFixture({ ...all, two: { threshold } })
     assert.notEqual(invalid.status, 0, `threshold ${threshold}: ${invalid.stdout}`)
   }
-  const passing = rustCoverageFixture({ one: gate, two: gate }, 95)
+  const passing = rustCoverageFixture(all, 95)
   assert.equal(passing.status, 0, passing.stdout + passing.stderr)
-  const failing = rustCoverageFixture({ one: gate, two: gate }, 94)
+  const failing = rustCoverageFixture(all, 94)
   assert.notEqual(failing.status, 0, failing.stdout)
   assert.match(failing.stdout, /two FAIL: 94.0% < 95%/)
+  assert.match(failing.stdout, /outside FAIL: 94.0% < 95%/)
 })
 
 test('package coverage preserves the complete test recipe and checks without rerunning suites', () => {

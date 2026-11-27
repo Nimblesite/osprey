@@ -79,6 +79,10 @@
       "osprey-types": {
         "threshold": 98,
         "language": "rust"
+      },
+      "tree-sitter-osprey": {
+        "threshold": 100,
+        "language": "rust"
       }
     },
     "c_runtime": {
