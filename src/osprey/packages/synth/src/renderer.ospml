@@ -231,7 +231,7 @@ module Renderer
     print "${arithmetic (\() => Renderer::automated (plan, 48000.0, Observation(revision = 0, samplePosition = 0, parameters = [], components = []), Rendered(states = [], samples = [], position = 0, meters = []), 1, unscheduled))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "Invalid automation block, ordering or event capacity." })
     ```
     *)
     export automated (plan, rate, snapshot, rendered, count, events) = match validBlock (rate, rendered, count) && supported plan && length events <= 1024 && ordered (events, rendered.position, satAdd rendered.position count)

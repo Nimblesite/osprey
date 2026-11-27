@@ -142,7 +142,7 @@ module RenderKernels
     print "${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 2, 48000.0, snapshot, true, states))} ${arithmetic (\() => RenderKernels::schedule (Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = []), 1, 48000.0, snapshot, true, states))}"
     ```
     ```output
-    @@TODO@@
+    Invalid { fault: MissingNode } Valid { value: <handle> }
     ```
     *)
     export schedule (plan, identity, rate, snapshot, fixed, states) = match Graphs::node (plan.graph, identity)
@@ -185,10 +185,10 @@ module RenderKernels
         remainderByZero _ => 0
     plan = Prepared(graph = Graph(nodes = [Components::gain (1, 1.0)], cables = []), order = [1], feedback = [])
     frame = SampleFrame(states = [KernelState(identity = 1, phase = 0.0, integratorOne = 0.0, integratorTwo = 0.0, delay = [], memory = KernelIdle)], values = [])
-    print "${arithmetic (\() => RenderKernels::resolved (plan, 48000.0, snapshot, frame, Invalid(fault = MissingNode)))} ${arithmetic (\() => RenderKernels::resolved (plan, 48000.0, snapshot, frame, RenderKernels::schedule (plan, 1, 48000.0, snapshot, true, frame.states)))}"
+    print "${arithmetic (\() => RenderKernels::resolved (plan, 48000.0, snapshot, frame, RenderKernels::schedule (plan, 9, 48000.0, snapshot, true, frame.states)))} ${arithmetic (\() => RenderKernels::resolved (plan, 48000.0, snapshot, frame, RenderKernels::schedule (plan, 1, 48000.0, snapshot, true, frame.states)))}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "Render schedule names an absent component." }) Error(MissingResource { detail: "An audio input is not connected." })
     ```
     *)
     export resolved (plan, rate, current, frame, component) = match component

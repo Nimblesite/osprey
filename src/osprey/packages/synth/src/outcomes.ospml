@@ -24,7 +24,7 @@ module Outcomes
     print "${Outcomes::carried (Error(message = MissingResource(detail = "x")), raised)} ${Outcomes::carried (Success(value = 1.0), raised)}"
     ```
     ```output
-    @@TODO@@
+    Error(MissingResource { detail: "x" }) Success(2.0)
     ```
     *)
     export carried (outcome, step) = match outcome

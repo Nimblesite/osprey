@@ -37,7 +37,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::applied (Graphs::empty, none, []))} ${arithmetic (\() => Fitting::applied (Graphs::empty, [gain], [2.0]))}"
     ```
     ```output
-    @@TODO@@
+    Success({ nodes: [], cables: [] }) Error(InvalidConfiguration { detail: "Fitted values must match the parameters one-to-one and lie in [0, 1]." })
     ```
     *)
     export applied (graph, parameters, values) = match parameters
@@ -65,7 +65,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::spectrum silence)}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "FFT size must be a power of two from 64 to 4096." })
     ```
     *)
     export spectrum samples = match Ffts::forward (windowed samples)
@@ -116,7 +116,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::start (Graphs::empty, config, silence))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target." })
     ```
     *)
     export start (graph, config, target) = match valid (config, target)
@@ -180,7 +180,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::advance (Graphs::empty, config, silence, search))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "FFT size must be a power of two from 64 to 4096." })
     ```
     *)
     export advance (graph, config, target, search) = match spectrum target
@@ -208,7 +208,7 @@ module Fitting
     print "${arithmetic (\() => Fitting::fit (Graphs::empty, config, silence))}"
     ```
     ```output
-    @@TODO@@
+    Error(InvalidConfiguration { detail: "A fit needs 1-16 parameters, a seed, 1-10000 evaluations, a tolerance in (0, 1) and a 64-4096 sample target." })
     ```
     *)
     export fit (graph, config, target) = running (graph, config, target, start (graph, config, target))
