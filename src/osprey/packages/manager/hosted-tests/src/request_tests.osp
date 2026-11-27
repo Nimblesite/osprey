@@ -6,6 +6,9 @@ import registry_api::HostedHeaders
 /// bounds, then the credentialed origin/CSRF chain. Implements
 /// [PACKAGE-HOSTED-EDGE] and [PACKAGE-HOSTED-AUTH] request admission.
 module RequestTests {
+    let v1Packages = "/v1/packages"
+    let contentLengthRefusal = "400:req.content-length"
+
     let policy = HostedRequest::Policy {
         allowedOrigin: "https://packages.example.test",
         allowedHost: "api.example.test",
@@ -31,8 +34,8 @@ module RequestTests {
             HostedHeaders::Ok { value } => value.method == "POST" && value.uri == "/v1/publish" && value.body == "release"
             _ => false
         },
-        verdict("GET", "/v1/packages", "", "") == "admitted",
-        verdict("GET", "/v1/packages", "Cookie: theme=1", "") == "admitted",
+        verdict("GET", v1Packages, "", "") == "admitted",
+        verdict("GET", v1Packages, "Cookie: theme=1", "") == "admitted",
         verdict("POST", "/v1/auth/logout", "Origin: https://packages.example.test\r\nCookie: session=abc\r\nX-Csrf-Token: csrf-tok", "") == "admitted"
     ])
 
@@ -45,16 +48,16 @@ module RequestTests {
 
     fn shape() = checkAll("request: method, URI and body bounds", [
         verdict("TRACE", "/v1/health", "", "") == "405:req.method",
-        verdict("post", "/v1/packages", "", "") == "405:req.method",
+        verdict("post", v1Packages, "", "") == "405:req.method",
         verdict("GET", "v1/health", "", "") == "400:req.uri",
         verdict("GET", "/v1/a b", "", "") == "400:req.uri",
         verdict("GET", "/${repeat("a", 2100) ?: ""}", "", "") == "414:req.uri",
         verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 12", repeat("a", 2000) ?: "") == "413:req.body-size",
-        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == "400:req.content-length",
-        verdict("POST", "/v1/packages", "Content-Length: 003", "猫") == "admitted",
-        verdict("POST", "/v1/packages", "Content-Length: 1", "猫") == "400:req.content-length",
-        verdict("POST", "/v1/packages", "Content-Length: 4", "abc") == "400:req.content-length",
-        verdict("POST", "/v1/packages", "Content-Length: 999999999999999999999999", "") == "400:req.content-length"
+        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == contentLengthRefusal,
+        verdict("POST", v1Packages, "Content-Length: 003", "猫") == "admitted",
+        verdict("POST", v1Packages, "Content-Length: 1", "猫") == contentLengthRefusal,
+        verdict("POST", v1Packages, "Content-Length: 4", "abc") == contentLengthRefusal,
+        verdict("POST", v1Packages, "Content-Length: 999999999999999999999999", "") == contentLengthRefusal
     ])
 
     fn credentialed() = checkAll("request: credentialed origin and CSRF chain", [

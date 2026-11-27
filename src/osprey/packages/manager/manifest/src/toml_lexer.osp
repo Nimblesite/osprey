@@ -7,6 +7,9 @@ namespace registry;
 /// Failures are `code at line:column` strings, never prose.
 /// Implements the lexical half of [PACKAGE-MANIFEST].
 module TomlLexer {
+    let tomlUnterminatedString = "toml.unterminated-string"
+    let tomlBadEscape = "toml.bad-escape"
+
     /// A scan position: the whole text, the 0-based byte offset, and the
     /// 1-based line and column of that byte.
     export type Cursor = { text: string, at: int, line: int, column: int }
@@ -126,10 +129,10 @@ module TomlLexer {
 
     fn walkSplit(s, budget, step, leftBudget) = walkBlock(walkBlock(s, leftBudget, step), budget - leftBudget, step)
 
-    fn stringStep(s, start, delimiter, basic) = if eof(s.at) { stringFault(s, "toml.unterminated-string", start) }
+    fn stringStep(s, start, delimiter, basic) = if eof(s.at) { stringFault(s, tomlUnterminatedString, start) }
         else if cur(s.at) == delimiter { walkState(advance(s.at), s.text, true, "") }
         else if basic && cur(s.at) == backslash { escapedStep(s, start) }
-        else if cur(s.at) == newline { stringFault(s, "toml.unterminated-string", start) }
+        else if cur(s.at) == newline { stringFault(s, tomlUnterminatedString, start) }
         else if controlByte(cur(s.at)) { stringFault(s, "toml.control-character", s.at) }
         else { walkState(advance(s.at), s.text + oneByte(s.at), false, "") }
 
@@ -139,7 +142,7 @@ module TomlLexer {
     }
 
     fn basicEscape(c, acc, start) = match eof(c) {
-        true => Error { message: failStr("toml.unterminated-string", start) }
+        true => Error { message: failStr(tomlUnterminatedString, start) }
         false => escapeByte(cur(c), c, acc, start)
     }
 
@@ -153,7 +156,7 @@ module TomlLexer {
         else if b == 114 { decoded(advance(c), acc + "\r") }
         else if b == 117 { unicodeEscape(advance(c), acc, start, 4) }
         else if b == 85 { unicodeEscape(advance(c), acc, start, 8) }
-        else { Error { message: failStr("toml.bad-escape", c) } }
+        else { Error { message: failStr(tomlBadEscape, c) } }
 
     fn hexVal(b) = if b >= 48 && b <= 57 { b - 48 }
         else if b >= 97 && b <= 102 { b - 87 }
@@ -163,11 +166,11 @@ module TomlLexer {
     fn readHex(c, n, acc) = match n == 0 {
         true => Success { value: acc }
         false => match eof(c) {
-            true => Error { message: failStr("toml.bad-escape", c) }
+            true => Error { message: failStr(tomlBadEscape, c) }
             false => {
                 let d = hexVal(cur(c))
                 match d == -1 {
-                    true => Error { message: failStr("toml.bad-escape", c) }
+                    true => Error { message: failStr(tomlBadEscape, c) }
                     false => readHex(advance(c), n - 1, acc * 16 + d)
                 }
             }
@@ -178,7 +181,7 @@ module TomlLexer {
 
     fn unicodeEscapeChar(c, n, acc, start, cp) = match fromCodePoint(cp) {
         Success { value } => decoded(afterHex(c, n), acc + value)
-        Error => Error { message: failStr("toml.bad-escape", start) }
+        Error => Error { message: failStr(tomlBadEscape, start) }
     }
 
     fn afterHex(c, n) = match n == 0 {

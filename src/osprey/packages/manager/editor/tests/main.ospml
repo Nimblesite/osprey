@@ -14,6 +14,8 @@ import ui::Runtime
 import uitest::Drive
 import uitest::Views
 
+ospreyPackages = "Osprey Packages"
+
 workspace = "file:///work/app"
 loopback = "http://127.0.0.1:8787"
 hosted = "https://registry.example.test"
@@ -237,7 +239,7 @@ installedCounts () =
     ])
     hidesIn (after, "packages", "@demo/ghost")
     showsIn (after, "root", "@demo/ghost · missing from disk")
-    expect (titledText (after, "root", "screen", "Osprey Packages", "subtitle"), workspace)
+    expect (titledText (after, "root", "screen", ospreyPackages, "subtitle"), workspace)
     expect (toneOf (after, "root", "Audit unverified"), "caution")
 
 emptyFindings () =
@@ -322,11 +324,11 @@ securityFindings () =
 unavailableData () =
     first = started loopback
     expectEvidence (first, "root", [{ label = "Installed", want = "" }])
-    expect (titledText (first, "root", "screen", "Osprey Packages", "subtitle"), workspace)
+    expect (titledText (first, "root", "screen", ospreyPackages, "subtitle"), workspace)
     failed = completedWith (first, ticketAt (first, 1), false, "Package executable is missing")
     expectEvidence (failed, "root", [{ label = "Installed", want = "" }, { label = "Catalog", want = "" }])
     showsIn (failed, "root", unavailableTitle)
-    expect (titledText (failed, "root", "screen", "Osprey Packages", "subtitle"), workspace)
+    expect (titledText (failed, "root", "screen", ospreyPackages, "subtitle"), workspace)
 
 verifiedFetch () =
     selected = catalogDetail (loopback, "@demo/new")

@@ -5,6 +5,9 @@ namespace registry_web;
 /// must show before every mutation surface
 /// ([PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-OWNERSHIP-PERMISSIONS]).
 module PermissionTests {
+    let packageAdministratorMemAdmin = "Package administrator: mem-admin-atlas"
+    let administrationAloneDoesNot = "administration alone does not authorize publication"
+
     let adminOnlyCode = "web.permissions.admin-only"
 
     /// The control screen for `member` over `ledger`, at the fixture clock.
@@ -14,25 +17,25 @@ module PermissionTests {
     /// shows the ledger and explicitly denies implied publication.
     fn adminWithoutPublish() = WebFixtures::showsTexts("web: admin without publish warned",
         controlScreen(WebFixtures::adminWithoutPublish(), WebFixtures::atlasGrantLedger()),
-        ["Package administrator: mem-admin-atlas", "edit-metadata", "publish-release",
-            "administration alone does not authorize publication"], [])
+        [packageAdministratorMemAdmin, "edit-metadata", "publish-release",
+            administrationAloneDoesNot], [])
 
     /// With the explicit grant, the warning is gone.
     fn adminWithPublish() = WebFixtures::showsTexts("web: admin with publish not warned",
         controlScreen(WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger()),
-        ["Package administrator: mem-admin-atlas", "publish-release"], ["administration alone does not authorize publication"])
+        [packageAdministratorMemAdmin, "publish-release"], [administrationAloneDoesNot])
 
     /// The package page carries the same context and warning for members.
     fn packageViewShowsAccess() = WebFixtures::showsTexts("web: package page shows access context",
         PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::now()),
-        ["Package administrator: mem-admin-atlas", "Your effective permissions: edit-metadata",
-            "administration alone does not authorize publication"], [])
+        [packageAdministratorMemAdmin, "Your effective permissions: edit-metadata",
+            administrationAloneDoesNot], [])
 
     /// A publisher sees their own effective permission, and no implied
     /// admin powers.
     fn publisherSeesOwnGrant() = WebFixtures::showsTexts("web: publisher sees own grant",
         PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::publisher(), WebFixtures::now()),
-        ["Your effective permissions: publish-release"], ["administration alone does not authorize publication"])
+        ["Your effective permissions: publish-release"], [administrationAloneDoesNot])
 
     /// Anonymous visitors get the public projection only: no seat, no
     /// grants, no permission panel at all.
@@ -66,7 +69,7 @@ module PermissionTests {
         let admin = pub { membership: "mem-admin-atlas" }
         let mixed = base { grants: [pub, admin { package: "other-package" }, admin { packageEpoch: 2 }, admin { memberEpoch: 2 }] }
         WebFixtures::showsTexts("web: publisher delegation is scoped", controlScreen(mixed, ledger),
-            ["Publishers", "mem-pub-1", "administration alone does not authorize publication"], [])
+            ["Publishers", "mem-pub-1", administrationAloneDoesNot], [])
     }
 
     /// The suite.

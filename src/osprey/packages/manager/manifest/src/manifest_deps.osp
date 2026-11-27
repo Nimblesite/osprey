@@ -6,6 +6,8 @@ namespace registry;
 /// and optional dependencies each fail with their own reason code.
 /// Implements the dependency, system and asset rules of [PACKAGE-MANIFEST].
 module ManifestDeps {
+    let dependenciesText = "dependencies"
+
     let requirementKeys = ["epoch", "min_release", "capabilities"]
     let grantCode = "manifest.dependency.capability"
     let versionKeys = ["version", "versions", "range", "max_release", "req"]
@@ -123,7 +125,7 @@ module ManifestDeps {
     fn sortedEdges(edges) = sortedBy(edges, compareEdges, missingEdge())
 
     fn checkedEdges(edges, root) = if epochsAgree(edges) { Success { value: sortedEdges(edges) } }
-        else { fail("manifest.dependency.epoch-conflict", ManifestSections::spanOf(ManifestSections::pairsOf(root), "dependencies", ManifestSections::rootSpan())) }
+        else { fail("manifest.dependency.epoch-conflict", ManifestSections::spanOf(ManifestSections::pairsOf(root), dependenciesText, ManifestSections::rootSpan())) }
 
     // ---- grants: `capabilities = [...]` on a dependency entry ([PACKAGE-CAPABILITY-CONFINEMENT]) ----
 
@@ -178,14 +180,14 @@ module ManifestDeps {
     /// sorted by key with canonical capability sets; a bad capability is
     /// `manifest.dependency.capability`.
     export fn grants(root) = {
-        use runtime <- andThen(tableGrants(root, "dependencies", []))
+        use runtime <- andThen(tableGrants(root, dependenciesText, []))
         use build <- andThen(tableGrants(root, "build-dependencies", runtime))
         use all <- andThen(tableGrants(root, "test-dependencies", build))
         Success { value: nonEmpty(mergedGrants(all)) }
     }
 
     /// All three dependency tables as canonical, sorted edges.
-    export fn dependencies(root) = andThen(tableEdges(root, "dependencies", []), fn(value) => withBuild(root, value))
+    export fn dependencies(root) = andThen(tableEdges(root, dependenciesText, []), fn(value) => withBuild(root, value))
 
     fn withBuild(root, sofar) = andThen(tableEdges(root, "build-dependencies", sofar), fn(value) => withTest(root, value))
 
