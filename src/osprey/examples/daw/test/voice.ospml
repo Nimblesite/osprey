@@ -152,6 +152,7 @@ prismIntegratedJourney () =
     expect ((Drive::holding added).paletteDrag, "")
     prismControlJourney quieter
     paletteClickJourney quieter
+    readingsShown ()
     forEachList (synth::EditorState::pickerKinds (), \kind =>
         added = component (quieter, kind)
         insertedDescribed (added, Drive::holding added))
@@ -183,6 +184,20 @@ insertedDescribed (added, editor) = valid (synth::Graphs::node (editor.graph, 5)
     forEachList (ui::Lists::slice (n.parameters, 0, 10), \p =>
         dial = Semantics::element (added.drivenSeen.renderedAccess, "${synth::EditorView::componentName (editor, n)} ${(synth::ParameterModes::describe p).title}")
         expect ("${p.key} ${dial.accessValue} ${dial.accessMin} ${dial.accessMax}", "${p.key} ${p.initial} ${p.minimum} ${p.maximum}")))
+
+// [DAW-CONTROLS-DIAL] A dial reads hundredths unless its value carries three to five decimals or sits under 0.01,
+// with a true minus sign and its unit.
+readingsShown () = forEachList ([
+    { unit = synth::Hertz, key = "frequency", value = 440.0, want = "440.00 Hz" },
+    { unit = synth::Ratio, key = "mix", value = 0.125, want = "0.125" },
+    { unit = synth::Ratio, key = "mix", value = 0.25, want = "0.25" },
+    { unit = synth::Ratio, key = "pan", value = -0.5, want = "−0.50" },
+    { unit = synth::Seconds, key = "attack", value = 0.005, want = "0.005 s" },
+    { unit = synth::Ratio, key = "mix", value = 3.14159265, want = "3.14" },
+    { unit = synth::Ratio, key = "drive", value = 2.0, want = "2.00×" },
+    { unit = synth::Seconds, key = "release", value = 0.0, want = "0.00 s" }], \c =>
+    p = synth::Parameter(key = c.key, label = c.key, unit = c.unit, minimum = -1000.0, maximum = 1000.0, initial = c.value, automatable = true)
+    expect ("${c.value}: ${synth::Dials::reading p}", "${c.value}: ${c.want}"))
 
 overlappingModuleJourney added =
     at = controlPoint (added, "Canvas Mixer 5", 0.5)

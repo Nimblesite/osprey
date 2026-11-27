@@ -84,7 +84,6 @@ Four host-free journeys failed independently ([screenshots and review](../../des
 ## Patch controls and chrome [DAW-CONTROLS-DIAL] [DAW-PAGES-STRIP]
 
 - [ ] **Dials**: arrow-key steps and focus, double-press for the default (a `Parameter` needs a default field), dials on the cards, sliders; Patch Controls and the canvas inspector compared with `docs/designs/prism-timeline/patch-controls.png` in a live window (180 units of travel, Shift ten times finer, one undo per turn, Escape and typed entry are built) [DAW-CONTROLS-DIAL].
-- [ ] Parameters after the tenth are no longer dropped, readings are not always hundredths and fine drag has a Shift cue [DAW-CONTROLS-DIAL].
 - [ ] **Patch Controls uses the design's toggle, dial, slider, menu and button**; the text boxes, "Connect/Disconnect" buttons and platform-styled menu go, and so does the number box that reformats while typing (392 became 923.0) [DAW-CONTROLS].
 - [ ] **Strip the UI**: patch cards drop the small name above each card and "Edit in Patch controls" (tapping the card is the edit); values shown rounded with units ("261.63 Hz"); "1 inputs · 1 outputs" and the bottom legend of cable kinds dropped; the piano-roll "Bar 23" label no longer collides with the "Piano roll" title [DAW-PAGES-STRIP].
 
