@@ -5,6 +5,8 @@
 // `method`, each arm a nested layout `match` over `path` whose arms are inline record
 // literals `HttpResponse(status = …, …)` (Default `HttpResponse { status: … }`).
 
+print "=== Comprehensive HTTP API Test ==="
+
 (** The header line every JSON request and response carries. *)
 jsonHeaders = "Content-Type: application/json"
 
@@ -20,8 +22,6 @@ jsonResponse (status, body) = HttpResponse(
     isComplete = true,
     partialBody = body
 )
-
-print "=== Comprehensive HTTP API Test ==="
 
 (** What the slow handler saw: how many 10 ms waits passed before its client left,
     or -1 if the client never did. A refused slot stays an `Error` each reader reports. *)
