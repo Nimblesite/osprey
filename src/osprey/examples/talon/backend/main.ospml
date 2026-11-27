@@ -39,13 +39,22 @@ holdPath () = env "TALON_HOLD" ?: "/tmp/talon_bank.hold"
 apiPort () = parseInt (env "TALON_API_PORT" ?: "18790")
 databasePath () = env "TALON_DB" ?: "/tmp/talon_bank.db"
 
-hold () =
-    marker = readFile (holdPath ())
-    match marker
-        Error _ => 0
-        Success _ =>
-            _slept = sleep 250
-            hold ()
+// Only an absent marker ends the hold [BUILTIN-FILE-ERRMSG]: any other read
+// failure is retried, at most `holdRetries` times in a row, so a transient error
+// cannot stop a journey's server early and a lasting one cannot hold it forever.
+holdRetries = 20
+
+hold () = holding 0
+
+holding failures = match readFile (holdPath ())
+    Success _ => waited 0
+    Error why => match endsWith why "No such file or directory" || failures >= holdRetries
+        true => 0
+        false => waited (satAdd failures 1)
+
+waited failures =
+    _slept = sleep 250
+    holding failures
 
 // The TUI closing shot: render every account as a table row through the same
 // pure domain renderer the API uses, stepping ids with the total `satAdd`.

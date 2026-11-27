@@ -33,7 +33,7 @@ Root-cause fixes only: no retries, no wider timeouts hiding a race, no skipped t
 
 ## App and UI harness timing
 
-- [ ] Talon Bank iOS journey: `hold ()` in `src/osprey/examples/talon/backend/main.ospml` stops serving on any `readFile` error; distinguish an absent marker from transient read failures (`ledger.js` prints server output when it exits while serving).
+- [x] Talon Bank iOS journey: `hold ()` in `src/osprey/examples/talon/backend/main.ospml` stops serving on any `readFile` error; distinguish an absent marker from transient read failures (`ledger.js` prints server output when it exits while serving).
 - [ ] VS Code workbench-browser profiler tests: the 3000 ms default locator timeout and the Library button's 5 s idle wait in `test/suite/profiler-kit.ts` have failed on attempts that later went green; wait on the actual workbench state with a CI-appropriate bound.
 - [ ] Replace the 2 s dead-worker wall-clock assertion in `package-workspace-wasi-guests.test.ts` with its rejection mechanism, and make the DAP harness's 30 s session/stop deadlines in `dap-harness.ts` CI-configurable while retaining hang detection.
 - [ ] WinUI: `Undrawn` in `src/toolchain/hosts/winui/OspreyHost/SelfTest.cs` still takes an undrawn layout as drawn after 3 s (fail-open); `goldens.ps1` compares raw pixels sensitive to font, GPU, DPI and compositor changes (pin rendering inputs or assert structurally on text-bearing regions); `self-test.ps1` names the unfinished step when the journey budget expires.
