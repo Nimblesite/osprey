@@ -25,7 +25,7 @@ fn suppliedStrings() = {
     requestStringGroups()
 }
 
-fn groupAt<T>(groups: Map<string, List<T>>, key, index, fallbackList: List<T>, fallback: T) =
+fn groupAt<T>(groups: Map<string, List<T>>, key, index, fallbackList, fallback) =
 (groups.mapGet(key) ?: fallbackList).listGet(index) ?: fallback
 
 /// One UFCS chain crosses generic effect erasure, Map<string,List<T>> lookup,

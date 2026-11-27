@@ -19,10 +19,12 @@ calculatePlayerLevel defeats =
         3 => 4
         _ => 5
 
+braveExplorer = "Brave Explorer"
+
 getPlayerTitle level =
     match level
         1 => "Novice Adventurer"
-        2 => "Brave Explorer"
+        2 => braveExplorer
         3 => "Seasoned Warrior"
         4 => "Legendary Hero"
         _ => "Master of the Realm"
@@ -147,7 +149,7 @@ adventureGameCase () =
 
     checkAll "adventure branch tables" [
         answersHold (calculatePlayerLevel, [0, 1, 2, 3, 9], [1, 2, 3, 4, 5]),
-        answersHold (getPlayerTitle, [1, 2, 3, 4, 5], ["Novice Adventurer", "Brave Explorer", "Seasoned Warrior", "Legendary Hero", "Master of the Realm"]),
+        answersHold (getPlayerTitle, [1, 2, 3, 4, 5], ["Novice Adventurer", braveExplorer, "Seasoned Warrior", "Legendary Hero", "Master of the Realm"]),
         answersHold (calculateWeaponDamage, enemyIds, [25, 40, 60, 15]),
         answersHold (calculateBarehandDamage, enemyIds, [10, 15, 20, 5]),
         answersHold (getEnemyName, enemyIds, ["Sneaky Goblin", "Fierce Orc", "Ancient Dragon", "Mysterious Shadow"]),
@@ -168,7 +170,7 @@ adventureGameCase () =
         remainingHealth2 == 0,
         newMonstersDefeated == 1,
         calculatePlayerLevel newMonstersDefeated == 2,
-        getPlayerTitle (calculatePlayerLevel newMonstersDefeated) == "Brave Explorer",
+        getPlayerTitle (calculatePlayerLevel newMonstersDefeated) == braveExplorer,
         finalGold == 285,
         treasure.total == 385
     ]

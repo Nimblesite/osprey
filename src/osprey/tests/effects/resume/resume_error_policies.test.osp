@@ -396,7 +396,7 @@ effect StringAnswerRecovery {
 }
 
 /// This exact shape returns a dynamic string after resuming with another string.
-fn stringAnswerBody() -> string !StringAnswerRecovery = {
+fn stringAnswerBody() !StringAnswerRecovery = {
     let value = perform StringAnswerRecovery.get()
     value + "!"
 }

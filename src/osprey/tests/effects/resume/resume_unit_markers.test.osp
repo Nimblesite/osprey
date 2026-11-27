@@ -5,7 +5,7 @@ effect Trace {
 }
 
 /// This helper performs two Unit markers before returning its final value.
-fn traced() -> int !Trace = {
+fn traced() !Trace = {
     perform Trace.mark("one")
     perform Trace.mark("two")
     7

@@ -18,6 +18,8 @@
 // [BUILTIN-STRING-CONCAT], and [BUILTIN-COLLECTION-LENGTH] to count the
 // resulting List<string>.
 
+let notFoundRoute = "404 not-found"
+
 fn handleGet(path) =
     match path {
         "/health" => "200 ok"
@@ -25,14 +27,14 @@ fn handleGet(path) =
             true  => "200 user-detail " + drop(path, 11)
             false => match startsWith(path, "/api/") {
                 true  => "200 api-fallback"
-                false => "404 not-found"
+                false => notFoundRoute
             }
         }
     }
 fn handlePost(path) =
     match path {
         "/api/users" => "201 created"
-        _            => "404 not-found"
+        _            => notFoundRoute
     }
 fn route(method, path) =
     match method {
@@ -147,8 +149,8 @@ fn stringPipelineCase() = {
         route(method: "GET", path: "/api/users/42") == "200 user-detail 42",
         route(method: "GET", path: "/api/orders") == "200 api-fallback",
         route(method: "POST", path: "/api/users") == "201 created",
-        route(method: "POST", path: "/other") == "404 not-found",
-        route(method: "GET", path: "/random") == "404 not-found",
+        route(method: "POST", path: "/other") == notFoundRoute,
+        route(method: "GET", path: "/random") == notFoundRoute,
         route(method: "DELETE", path: "/anything") == "405 method-not-allowed"
     ])
 }
