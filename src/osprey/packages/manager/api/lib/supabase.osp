@@ -25,13 +25,14 @@ module Supabase {
 
     fn field(document, key) = JsonRead::text(JsonRead::field(document, key))
 
-    fn github(identities) = filterList(identities, fn(identity) => field(identity, "provider") == "github")
-
     fn identity(document) = {
-        let matches = github(JsonRead::items(JsonRead::field(document, "identities")))
+        let identities = JsonRead::items(JsonRead::field(document, "identities"))
         let subject = field(document, "id")
-        let providerId = field(listGet(matches, 0) ?: Json::Null, "id")
-        if subject == "" || providerId == "" || startsWith(providerId, "0") || !Bytes::everyByte(providerId, Bytes::isDigit) || length(matches) != 1 { Error { message: "auth.github-identity" } }
+        let identity = listGet(identities, 0) ?: Json::Null
+        let providerId = field(identity, "id")
+        if length(identities) != 1 || field(identity, "provider") != "github" || !Bytes::canonicalUuid(subject)
+            || field(identity, "user_id") != subject || providerId == "" || startsWith(providerId, "0")
+            || !Bytes::everyByte(providerId, Bytes::isDigit) { Error { message: "auth.github-identity" } }
         else { Success { value: Identity { authSubject: subject, githubId: providerId } } }
     }
 

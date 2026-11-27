@@ -22,21 +22,54 @@ module ProviderTests {
         Supabase::verify(config, token)
     }
 
-    fn stableIdentity(config) = match fixture(config, fixtureToken, 200,
-        "{\"id\":\"auth-subject\",\"email\":\"ignored@example.test\",\"identities\":[{\"provider\":\"github\",\"identity_id\":\"identity-uuid\",\"id\":\"123456\"}],\"user_metadata\":{\"admin\":true,\"organization\":\"attacker\"}}") {
+    let subject = "a80bcffd-e51b-44cc-9fa8-af2a49fae457"
+    fn link(owner, provider) = "{\"user_id\":\"${owner}\",\"provider\":\"${provider}\",\"identity_id\":\"11b2e1b2-64d1-4181-8393-da01a07ec855\",\"id\":\"123456\"}"
+    fn account(id, links) = "{\"id\":\"${id}\",\"email\":\"ignored@example.test\",\"identities\":[${links}],\"user_metadata\":{\"admin\":true}}"
+
+    fn stableIdentity(config) = match fixture(config, fixtureToken, 200, account(subject, link(subject, "github"))) {
         Error { message } => check("verified provider identity", "ok", message)
         Success { value } => checkAll("authority uses immutable provider fields, never email or metadata", [
-                structuralEquals([value.authSubject, value.githubId], ["auth-subject", "123456"])
+                structuralEquals([value.authSubject, value.githubId], [subject, "123456"])
         ])
     }
 
     fn rejectedIdentity(config) = checkAll("failed, ambiguous or non-GitHub provider identities are rejected", [
+            code(fixture(config, fixtureToken, 200, account(subject, link("158661ef-f68d-47cf-a9e3-d1c89896601f", "github")))) == githubIdentity,
+            code(fixture(config, fixtureToken, 200, account("invalid", link("invalid", "github")))) == githubIdentity,
+            code(fixture(config, fixtureToken, 200, account(subject, link(subject, "github") + "," + link(subject, "email")))) == githubIdentity,
+            code(fixture(config, fixtureToken, 200, account(subject, link(subject, "email")))) == githubIdentity,
             code(fixture(config, fixtureToken, 401, "{}")) == "auth.provider-rejected",
-            code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"identities\":[]}")) == githubIdentity,
+            code(fixture(config, fixtureToken, 200, account(subject, ""))) == githubIdentity,
             code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"user_metadata\":{\"provider_id\":\"123\"}}")) == githubIdentity,
-            code(fixture(config, fixtureToken, 200, "{\"id\":\"x\",\"identities\":[{\"provider\":\"github\",\"id\":\"1\"},{\"provider\":\"github\",\"id\":\"2\"}]}")) == githubIdentity,
+            code(fixture(config, fixtureToken, 200, account(subject, link(subject, "github") + "," + link(subject, "github")))) == githubIdentity,
             code(fixture(config, fixtureToken, 200, "not-json")) == "auth.provider-json"
     ])
+
+    fn exchange(config, identities) = {
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        handle Supabase::Provider {
+            request method base path headers payload => if base != config.supabaseOrigin { Error { message: "wrong-origin" } }
+            else if method == "POST" && path == "/auth/v1/token?grant_type=pkce"
+                && payload == "{\"auth_code\":\"fixture-code\",\"code_verifier\":\"${verifier}\"}"
+                && contains(headers, "apikey: ${config.publishableKey}") {
+                Success { value: Supabase::Reply { status: 200, body: "{\"access_token\":\"fixture-token\",\"refresh_token\":\"fixture-refresh\",\"expires_in\":600}" } }
+            } else if method == "GET" && path == "/auth/v1/user" && contains(headers, "Authorization: Bearer ${fixtureToken}") {
+                Success { value: Supabase::Reply { status: 200, body: account(subject, identities) } }
+            } else { Error { message: "unexpected-provider-request" } }
+        }
+        Supabase::exchange(config, "fixture-code", verifier)
+    }
+
+    fn callback(config) = {
+        let github = link(subject, "github")
+        checkAll("PKCE exchange checks the returned access token's linked identity", [
+            match exchange(config, github) {
+                Success { value } => value.identity.authSubject == subject && value.identity.githubId == "123456" && value.expiresIn == 600
+                Error => false
+            },
+            code(exchange(config, github + "," + link(subject, "email"))) == githubIdentity
+        ])
+    }
 
     fn refusedTransport(config) = {
         handle Supabase::Provider {
@@ -54,6 +87,7 @@ module ProviderTests {
     export fn run(config) = {
         test("auth: provider immutable identity", fn() => stableIdentity(config))
         test("auth: provider denial cases", fn() => rejectedIdentity(config))
+        test("auth: PKCE exchange identity", fn() => callback(config))
         test("auth: provider transport denial", fn() => refusedTransport(config))
     }
 }

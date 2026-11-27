@@ -74,6 +74,13 @@ module Bytes {
     /// hex digit, the spelling of digests and UUIDs ([PACKAGE-TYPE-INVARIANTS]).
     export fn lowerHexBetween(text, from, to) = fold(range(from, to), true, fn(ok, i) => ok && lowerHexDigit(at(text, i)))
 
+    /// Lowercase UUID text shared by database and provider identity boundaries.
+    export fn canonicalUuid(text) = byteLength(text) == 36 && (substring(text, 8, 9) ?: "") == "-"
+    && (substring(text, 13, 14) ?: "") == "-" && (substring(text, 18, 19) ?: "") == "-"
+    && (substring(text, 23, 24) ?: "") == "-" && lowerHexBetween(text, 0, 8)
+    && lowerHexBetween(text, 9, 13) && lowerHexBetween(text, 14, 18)
+    && lowerHexBetween(text, 19, 23) && lowerHexBetween(text, 24, 36)
+
     /// Concatenation of several byte sequences, in order.
     export fn concatAll(parts) = foldList(parts, [], fn(acc, part) => listConcat(acc, part))
 
