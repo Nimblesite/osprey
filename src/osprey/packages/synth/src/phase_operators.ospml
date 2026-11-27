@@ -4,7 +4,23 @@ namespace synth
 (** One operator: ramp → shape (plain, PD, windowed PM or WPPM) → audio-rate PM/feedback → −cos carrier.
     Not antialiased: PD and WPPM breakpoints near 0 or 1, and large indices, alias. *)
 module PhaseOperators
-    (** Zero phase, silent feedback history and a low sync input. *)
+    (** Zero phase, silent feedback history and a low sync input.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${PhaseOperators::initial.phase} ${PhaseOperators::initial.sync}"
+
+    arithmetic example
+    ```
+    ```output
+    0.0 0.0
+    ```
+    *)
     export initial = OperatorState(phase = 0.0, previous = 0.0, older = 0.0, sync = 0.0)
 
     pulseValid p = abs p.index <= 16.0 && p.ratio >= 0.0 && p.ratio <= 64.0 && p.offset >= 0.0 && p.offset <= 1.0
@@ -16,7 +32,24 @@ module PhaseOperators
         WavePulsePhase breakpoint first second => breakpoint >= 0.001 && breakpoint <= 0.999 && pulseValid first && pulseValid second
 
     (** Frequency below 0.45 of the rate (negative runs backwards), depth/spread for the modulation input,
-        feedback 0–1 (cycles, averaged over two samples for stability) and amplitude 0–1. *)
+        feedback 0–1 (cycles, averaged over two samples for stability) and amplitude 0–1.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        config = OperatorConfig(sampleRate = 48000.0, frequency = 12000.0, shape = PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = 1.0)
+        print "${PhaseOperators::configure config} ${PhaseOperators::configure (config(feedback = 2.0))}"
+
+    arithmetic example
+    ```
+    ```output
+    Success({ sampleRate: 48000.0, frequency: 12000.0, shape: PlainPhase, depth: 0.0, spread: 0.0, feedback: 0.0, amplitude: 1.0 }) Error(InvalidConfiguration { detail: "Invalid operator rate, frequency, modulation, feedback, amplitude or phase shape." })
+    ```
+    *)
     export configure config = match config.sampleRate >= 8000.0 && config.sampleRate <= 384000.0 && abs config.frequency < config.sampleRate * 0.45 && abs config.depth <= 16.0 && abs config.spread <= config.sampleRate * 0.45 && config.feedback >= 0.0 && config.feedback <= 1.0 && config.amplitude >= 0.0 && config.amplitude <= 1.0 && shapeValid config.shape
         true => Success(value = config)
         false => Error(message = InvalidConfiguration(detail = "Invalid operator rate, frequency, modulation, feedback, amplitude or phase shape."))
@@ -29,7 +62,23 @@ module PhaseOperators
     pulse (position, controls) =
         PhaseMath::window position * controls.index * sin (6.283185307179586 * (controls.ratio * position + controls.offset))
 
-    (** The shaped phase for one ramp value, independent of the carrier. *)
+    (** The shaped phase for one ramp value, independent of the carrier.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        print "${PhaseOperators::shaped (PlainPhase, 0.25)} ${PhaseOperators::shaped (DistortedPhase(breakpoint = 0.25), 0.125)}"
+
+    arithmetic example
+    ```
+    ```output
+    0.25 0.25
+    ```
+    *)
     export shaped (shape, phase) = match shape
         PlainPhase => phase
         DistortedPhase breakpoint => basePhase (phase, breakpoint)
@@ -45,18 +94,73 @@ module PhaseOperators
         true => 0.0
         false => held.phase
 
-    (** One sample: `modulation` drives phase (depth) and frequency (spread); `sync` hard-resets on a rising edge. *)
+    (** One sample: `modulation` drives phase (depth) and frequency (spread); `sync` hard-resets on a rising edge.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        config = OperatorConfig(sampleRate = 48000.0, frequency = 12000.0, shape = PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = 1.0)
+        first = PhaseOperators::next (config, PhaseOperators::initial, 0.0, 0.0)
+        second = PhaseOperators::next (config, first.next, 0.0, 0.0)
+        print "${first.sample} ${second.sample} ${second.next.phase}"
+
+    arithmetic example
+    ```
+    ```output
+    -1.0 -6.123233995736766e-17 0.5
+    ```
+    *)
     export next (config, held, modulation, sync) =
         phase = synced (held, sync)
         // Feedback reads the unscaled carrier, so amplitude never changes timbre.
         raw = PhaseMath::carrier (PhaseMath::modulated (shaped (config.shape, phase), modulation, config.depth, held.previous, held.older, config.feedback))
         OperatorSample(sample = config.amplitude * raw, next = OperatorState(phase = Waves::wrap (phase + PhaseMath::instantaneous (config.frequency, modulation, config.spread) / config.sampleRate), previous = raw, older = held.previous, sync = sync))
 
-    (** Oversampled operator state: the operator runs at twice the rate into a half-band decimator. *)
+    (** Oversampled operator state: the operator runs at twice the rate into a half-band decimator.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        held = PhaseOperators::oversampledInitial ()
+        print "${length held.down} ${held.operator.phase}"
+
+    arithmetic example
+    ```
+    ```output
+    31 0.0
+    ```
+    *)
     export oversampledInitial () = OversampledOperator(operator = initial, down = Sequences::zeros Oversamplers::taps)
 
     (** One base-rate sample from two operator samples at twice the rate, decimated by the 31-tap half-band
-        filter (7.5 base-rate samples of latency). Modulation and sync are held across both sub-samples. *)
+        filter (7.5 base-rate samples of latency). Modulation and sync are held across both sub-samples.
+    # Examples
+    ```osprey
+    arithmetic = handler Arith
+        overflow _ _ _ wrapped => wrapped
+        divideByZero _ _ => 0.0
+        remainderByZero _ => 0
+
+    example () =
+        config = OperatorConfig(sampleRate = 48000.0, frequency = 12000.0, shape = PlainPhase, depth = 0.0, spread = 0.0, feedback = 0.0, amplitude = 1.0)
+        match PhaseOperators::oversampled (config, PhaseOperators::oversampledInitial (), 0.0, 0.0)
+            Success one => print "${length one.next.down} ${one.next.operator.phase}"
+            Error fault => print "${fault}"
+
+    arithmetic example
+    ```
+    ```output
+    31 0.25
+    ```
+    *)
     export oversampled (config, held, modulation, sync) = match length held.down == Oversamplers::taps
         false => Error(message = IncompatibleLayout(detail = "Oversampled operator history does not match its filter."))
         true =>
