@@ -5,7 +5,7 @@ import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { ColorThemeKind, commands } from "vscode";
 import type { Frame } from "playwright-core";
-import { COMMAND, answer, assertNoFreehandInk, firstLesson, press, waitForIdleWorkbench, withWorkbench } from "./workbench-browser-kit";
+import { COMMAND, answer, assertNoFreehandInk, firstLesson, press, UI_MS, waitForIdleWorkbench, withWorkbench } from "./workbench-browser-kit";
 
 const library = (frame: Frame) => frame.locator(".osp-frame-proof-library-inspection");
 const formula = (frame: Frame) => frame.getByRole("textbox", { name: "Your formula", exact: true });
@@ -25,7 +25,9 @@ async function forgedClick(frame: Frame, name: string, ordinal: string): Promise
   }, ordinal);
 }
 
-suite("workbench VSIX browser", () => {
+suite("workbench VSIX browser", function () {
+  // Several UI waits per test, each bounded by UI_MS, so a stuck step reports its own wait first.
+  this.timeout(UI_MS * 4);
   teardown(() => sinon.restore());
 
   test("a refused stale action does not leave the workbench busy", async () => {
@@ -36,7 +38,7 @@ suite("workbench VSIX browser", () => {
       await waitForIdleWorkbench(frame);
       const before = runtime.events.length;
       await forgedClick(frame, "Library", String(2 ** 31));
-      await waitForIdleWorkbench(frame, 5000);
+      await waitForIdleWorkbench(frame);
       assert.deepStrictEqual(runtime.events.slice(before).map((event) => event.ordinal), [2 ** 31], "the forged ordinal reaches the application, which refuses it");
       assert.strictEqual(await open.isVisible(), true, "the refused action must not navigate");
       assert.strictEqual(await frame.getByRole("button", { name: "Library", exact: true }).isEnabled(), true, "an ignored action must not leave controls paused");
@@ -48,7 +50,7 @@ suite("workbench VSIX browser", () => {
       await waitForIdleWorkbench(frame);
       const before = runtime.events.length;
       for (const ordinal of ["-1", "0.5", "not a number"]) await forgedClick(frame, "Lessons", ordinal);
-      await waitForIdleWorkbench(frame, 5000);
+      await waitForIdleWorkbench(frame);
       assert.deepStrictEqual(runtime.events.slice(before).filter((event) => event.kind === 0 && event.ordinal < 0), []);
       assert.strictEqual(await frame.locator(".osp-frame-workbench").count(), 1);
       assert.strictEqual(await frame.getByRole("button", { name: "Lessons", exact: true }).isEnabled(), true);
@@ -93,12 +95,12 @@ suite("workbench VSIX browser", () => {
         assert.deepStrictEqual(paused, { busy: "true", disabled: true, notice: "Updating · previous results shown" });
         await formula(frame).fill("p → p");
       } finally { release(); }
-      await waitForIdleWorkbench(frame, 5000);
+      await waitForIdleWorkbench(frame);
       assert.strictEqual(await formula(frame).inputValue(), "p → p");
       // The typed formula reaches the application after the held call returns, so a brief idle
       // between the two can come first; the controls must come back once both are answered.
       const library = frame.getByRole("button", { name: "Library", exact: true });
-      assert.strictEqual(await pollUntilResult({ fn: () => library.isEnabled(), until: (enabled) => enabled, timeoutMs: 5000, description: "Library returns once the updates are answered" }), true);
+      assert.strictEqual(await pollUntilResult({ fn: () => library.isEnabled(), until: (enabled) => enabled, timeoutMs: UI_MS, description: "Library returns once the updates are answered" }), true);
     }, "failure-pending-runtime");
   });
 
@@ -110,9 +112,9 @@ suite("workbench VSIX browser", () => {
         await press(frame, "Lessons");
         await pollUntilResult({ fn: () => pausedState(frame), until: (state) => state.busy === "true", timeoutMs: 2000, description: "busy" });
       } finally { release(); }
-      await waitForIdleWorkbench(frame, 5000);
+      await waitForIdleWorkbench(frame);
       await press(frame, "Library");
-      await waitForIdleWorkbench(frame, 5000);
+      await waitForIdleWorkbench(frame);
       assert.strictEqual(await frame.locator("#osprey-root button:disabled").count(), disabledBefore, "only the controls the application disabled stay disabled");
       assert.deepStrictEqual((await pausedState(frame)).notice, "");
     }, "failure-pending-restored");
@@ -211,7 +213,7 @@ suite("workbench VSIX browser", () => {
       await press(frame, "Natural arithmetic");
       await frame.getByText("Checked theorem", { exact: true }).waitFor();
       await press(frame, "Lessons");
-      await waitForIdleWorkbench(frame, 5000);
+      await waitForIdleWorkbench(frame);
       assert.strictEqual(await library(frame).count(), 0, "Lessons must leave imported-library inspection");
       await press(frame, "Library");
       await frame.getByText("Checked theorem", { exact: true }).waitFor();

@@ -183,3 +183,20 @@ export function assertSkipWarningLayout(
     expected.map((expectation) => expectation.message),
   );
 }
+
+/**
+ * Every test deadline is multiplied by `OSPREY_TEST_DEADLINE_SCALE` (default 1)
+ * so a cold or loaded runner can be given more time. The deadlines stay finite,
+ * so a hang still fails. A scale below 1 or one that isn't a number is refused
+ * when the suite loads, never silently ignored.
+ */
+const DEADLINE_SCALE = ((raw: string | undefined): number => {
+  const scale = raw === undefined || raw === "" ? 1 : Number(raw);
+  if (!Number.isFinite(scale) || scale < 1) {
+    throw new Error(`OSPREY_TEST_DEADLINE_SCALE must be a number >= 1, got ${JSON.stringify(raw)}`);
+  }
+  return scale;
+})(process.env.OSPREY_TEST_DEADLINE_SCALE);
+
+/** `ms` scaled for this runner. */
+export const testDeadline = (ms: number): number => ms * DEADLINE_SCALE;

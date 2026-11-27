@@ -11,6 +11,7 @@
 
 import * as assert from "assert";
 import * as vscode from "vscode";
+import { testDeadline } from "./osprey-test-env";
 
 /** A source breakpoint: a bare 1-based line, or a line with a hit condition. */
 export type BreakpointSpec = number | { line: number; condition?: string };
@@ -48,26 +49,9 @@ export interface DapStop {
 const DEFAULT_STACK_LEVELS = 20;
 const POLL_INTERVAL_MS = 100;
 
-/**
- * Every DAP deadline is multiplied by `OSPREY_DAP_DEADLINE_SCALE` (default 1)
- * so a cold or loaded runner can be given more time. The deadlines stay finite,
- * so a hang still fails. A scale below 1 or one that isn't a number is refused
- * when the suite loads, never silently ignored.
- */
-const DEADLINE_SCALE = ((raw: string | undefined): number => {
-  const scale = raw === undefined || raw === "" ? 1 : Number(raw);
-  if (!Number.isFinite(scale) || scale < 1) {
-    throw new Error(`OSPREY_DAP_DEADLINE_SCALE must be a number >= 1, got ${JSON.stringify(raw)}`);
-  }
-  return scale;
-})(process.env.OSPREY_DAP_DEADLINE_SCALE);
-
-/** `ms` scaled for this runner. */
-export const dapDeadline = (ms: number): number => ms * DEADLINE_SCALE;
-
 /** Long enough for compile + lldb-dap launch + the stepping each test drives. */
-export const LAUNCH_TIMEOUT_MS = dapDeadline(45_000);
-const STEP_TIMEOUT_MS = dapDeadline(30_000);
+export const LAUNCH_TIMEOUT_MS = testDeadline(45_000);
+const STEP_TIMEOUT_MS = testDeadline(30_000);
 
 /** Remove every breakpoint VS Code currently holds. */
 export function clearDebugBreakpoints(): void {
