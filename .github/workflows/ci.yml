@@ -140,7 +140,8 @@ jobs:
         run: npm ci
         working-directory: ./src/toolchain/vscode-extension
 
-      - name: Install jq and the wasm toolchain
+      - &install-wasi-sdk
+        name: Install jq and the wasm toolchain
         run: |
           set -euo pipefail
           sudo apt-get install -y jq lld wabt
@@ -356,6 +357,49 @@ jobs:
       - name: Every Osprey program compiles
         run: make _check_programs
 
+  build-registry-hosted:
+    name: Build hosted registry test artifacts
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - *install-wasi-sdk
+      - &install-wasmtime
+        name: Install pinned Wasmtime
+        env:
+          WASMTIME_VERSION: "27.0.0"
+          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
+          sudo mkdir -p /opt/wasmtime
+          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
+          echo "/opt/wasmtime" >> "$GITHUB_PATH"
+      - name: Build the packaged site and pinned migration tool
+        run: |
+          chmod +x target/release/osprey
+          make -C src/osprey/packages registry-website-fixture registry-migration-tool REGISTRY_WEBSITE_RUNTIME=
+      - uses: actions/upload-artifact@v7
+        with:
+          name: registry-hosted-fixture
+          path: |
+            target/registry-site-build/hosted-fixture/
+            target/registry-tools/*/bin/
+          retention-days: 1
+          if-no-files-found: error
+
   # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
   # Every suite, in parallel, each instrumented. None of these rebuilds the
   # compiler: they download stage 1's artifacts.
@@ -392,24 +436,8 @@ jobs:
       # runner happens to carry. fiber_lifetime runs its wasm32 cases under
       # wasmtime, measuring the host's peak [CONCURRENCY-WASM], so the pinned
       # host is installed and checksummed too.
-      - name: Install the wasm toolchain
-        env:
-          WASMTIME_VERSION: "27.0.0"
-          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
-        run: |
-          set -euo pipefail
-          sudo apt-get install -y lld wabt
-          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasi-sysroot.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
-          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
-          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
-          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
-          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
-            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
-          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
-          sudo mkdir -p /opt/wasmtime
-          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
-          echo "/opt/wasmtime" >> "$GITHUB_PATH"
+      - *install-wasi-sdk
+      - *install-wasmtime
 
       - uses: actions/download-artifact@v8
         with:
@@ -539,6 +567,43 @@ jobs:
           uv python install 3.12
       - name: Package manager security and integration suites
         run: make _test_registry REGISTRY_MEMORY=arc
+
+  test-registry-hosted:
+    name: "Tests: hosted registry (PostgreSQL and Chromium)"
+    needs: [changes, build, build-registry-hosted]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - uses: actions/download-artifact@v8
+        with:
+          name: registry-hosted-fixture
+          path: target
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/toolchain/website/package-lock.json
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install the locked browser harness
+        working-directory: src/toolchain/website
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Replay migrations and exercise the packaged catalog and account flows
+        run: |
+          chmod +x target/release/osprey
+          export PATH="/usr/lib/postgresql/16/bin:$PATH"
+          test -x /usr/lib/postgresql/16/bin/postgres
+          make -C src/osprey/packages registry-integration-verify
 
   test-python-app-ports:
     name: "Tests: Python application ports"
@@ -1695,6 +1760,7 @@ jobs:
       - changes
       - build
       - build-macos
+      - build-registry-hosted
       - deslop
       - analyse
       - check-programs
@@ -1702,6 +1768,7 @@ jobs:
       - test-packages
       - test-registry-gc
       - test-registry-arc
+      - test-registry-hosted
       - test-python-app-ports
       - test-gpt2-parity
       - test-corpus-gc

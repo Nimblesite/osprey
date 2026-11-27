@@ -92,6 +92,20 @@ function withRegistryFixture(body) {
 }
 
 export function registerRegistryContracts() {
+  test('hosted registry browser and database tests gate CI on prebuilt inputs', () => {
+    const workflow = '.github/workflows/ci.yml'
+    const build = job('build-registry-hosted', workflow)
+    const hosted = job('test-registry-hosted', workflow)
+    assert.match(build, /needs: \[changes, build\]/)
+    assert.match(build, /registry-website-fixture registry-migration-tool/)
+    assert.match(build, /name: registry-hosted-fixture/)
+    assert.match(hosted, /needs: \[changes, build, build-registry-hosted\]/)
+    assert.match(hosted, /name: registry-hosted-fixture/)
+    assert.match(hosted, /registry-integration-verify/)
+    assert.doesNotMatch(hosted, /registry-website-fixture|registry-migration-tool/)
+    assert.match(job('ci', workflow), /^      - test-registry-hosted$/m)
+  })
+
   test('package manager security suites gate CI and local tests under GC and ARC', () => {
     const coverage = job('coverage', '.github/workflows/ci.yml')
     assert.match(coverage, /if:.*always\(\)/)

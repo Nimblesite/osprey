@@ -115,6 +115,11 @@ $(REGISTRY_MIGRATOR):
 
 ## registry-migration-check: Apply the registry schema twice on disposable socket-only PostgreSQL.
 registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
+	$(MAKE) -C src/osprey/packages _registry-migration-verify
+
+.PHONY: _registry-migration-verify
+_registry-migration-verify:
+	@test -x "$(BIN)" && test -s "$(REGISTRY_MIGRATOR)"
 	@set -eu; pg=$$(pg_config --bindir); \
 	  if [ ! -x "$$pg/postgres" ]; then pg=$$(dirname "$$(realpath "$$(command -v postgres)")"); fi; \
 	  db=$$(mktemp -d /tmp/osprey-registry.XXXXXX); \
@@ -129,10 +134,15 @@ registry-migration-check: $(REGISTRY_MIGRATOR) $(BIN)
 	  test "$$("$$pg/psql" -XAtc "SELECT count(*) = 14 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM pg_class WHERE relnamespace = 'registry'::regnamespace AND relkind = 'r'")" = t; \
 	  $(BIN) test src/osprey/packages/manager/database-tests/live
 
-.PHONY: registry-integration-check
+.PHONY: registry-integration-check registry-integration-verify
 ## registry-integration-check: Browse a real PostgreSQL-backed hosted API with the packaged website in Chromium.
-registry-integration-check: registry-website-fixture
-	REGISTRY_BROWSER_CHECK=1 $(MAKE) -C src/osprey/packages registry-migration-check
+registry-integration-check: registry-website-fixture $(REGISTRY_MIGRATOR)
+	$(MAKE) -C src/osprey/packages registry-integration-verify
+
+## registry-integration-verify: Exercise prebuilt Pages and migration artifacts without rebuilding them.
+registry-integration-verify:
+	node scripts/packages/test-registry-preview.cjs --built-hosted-account
+	REGISTRY_BROWSER_CHECK=1 $(MAKE) -C src/osprey/packages _registry-migration-verify
 
 .PHONY: registry-infra-check
 ## registry-infra-check: Validate pinned registry infrastructure without contacting a state backend.
@@ -182,7 +192,8 @@ registry-website-fixture: export REGISTRY_API_ORIGIN := https://api.example.test
 registry-website-fixture: export REGISTRY_CONTENT_ORIGIN := https://content.example.test
 
 ## registry-website: Compile the registry website to WASM and render its Cloudflare Pages directory.
-registry-website registry-website-fixture registry-website-archive: $(BIN) | _runtime_wasm
+REGISTRY_WEBSITE_RUNTIME ?= _runtime_wasm
+registry-website registry-website-fixture registry-website-archive: $(BIN) | $(REGISTRY_WEBSITE_RUNTIME)
 	@mkdir -p target/registry-site-build
 	$(BIN) build $(REGISTRY_WEB)/site --target=wasm32 --quiet --no-warnings -o target/registry-site-build/site.wasm
 	@set -eu; out=$$(mktemp -d target/registry-site-build/pages.XXXXXX); \
