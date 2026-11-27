@@ -31,7 +31,21 @@ class ScaleMin:
 
 
 SUPPORTED = ["F32", "Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_NL", "IQ4_XS", "IQ3_S"]
-"""The tensor types this port decodes: the ones the chosen weights file uses."""
+"""The tensor types this port decodes: the ones the chosen weights file uses.
+
+# Examples
+```osprey
+from gguf import Quant
+
+def show():
+    print(Quant.SUPPORTED)
+
+wrappingArithmetic(show)
+```
+```output
+["F32", "Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_NL", "IQ4_XS", "IQ3_S"]
+```
+"""
 
 Q3_K_LOW_MASK = 252645135
 """0x0f0f0f0f: the low four bits of each of four packed Q3_K scale bytes."""
@@ -41,7 +55,21 @@ Q3_K_HIGH_MASK = 50529027
 
 
 def decode(type_name, data):
-    """Every value `data` holds, decoded from its whole blocks of `type_name`."""
+    """Every value `data` holds, decoded from its whole blocks of `type_name`.
+
+    # Examples
+    ```osprey
+    from gguf import Quant
+
+    def show():
+        print(f"{Quant.decode('F32', [0, 0, 128, 63, 0, 0, 0, 64])} {Quant.decode('Q2_K', [])}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([1.0, 2.0]) Error(gguf: no block decoder for tensor type Q2_K)
+    ```
+    """
     match layout(type_name):
         case Success(value=block):
             return values_of(block, decoder(type_name), data)
