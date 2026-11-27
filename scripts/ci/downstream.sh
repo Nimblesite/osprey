@@ -18,7 +18,8 @@ for name in "$@"; do
         git -C "$dir" reset --quiet --hard FETCH_HEAD
     fi
     paths=()
-    while IFS= read -r path; do [ -n "$path" ] && paths+=("$path"); done < "$dir/paths"
+    # A Windows checkout gives `paths` CRLF line ends: read them as LF.
+    while IFS= read -r path; do path=${path%$'\r'}; [ -n "$path" ] && paths+=("$path"); done < "$dir/paths"
     for path in "${paths[@]}"; do
         if [ -n "$(git -C "$root" ls-files -- "$path")" ]; then
             echo "downstream: $path is tracked by ospreylang; $name cannot own it" >&2
@@ -26,6 +27,8 @@ for name in "$@"; do
         fi
         rm -rf "${root:?}/${path:?}"
     done
+    files=$(git -C "$dir" ls-files -- "${paths[@]}" | wc -l | tr -d " ")
+    [ "$files" -gt 0 ] || { echo "downstream: $name lays no files; its paths match nothing" >&2; exit 1; }
     git -C "$dir" ls-files -z -- "${paths[@]}" | tar -C "$dir" --null -T - -cf - | tar -C "$root" -xf -
-    echo "downstream: $name at main $(git -C "$dir" rev-parse --short HEAD)"
+    echo "downstream: $name at main $(git -C "$dir" rev-parse --short HEAD), $files files"
 done

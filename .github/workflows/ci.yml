@@ -1585,6 +1585,16 @@ jobs:
           npm ci --prefix src/toolchain/website
           npx --prefix src/toolchain/website playwright install chromium webkit
 
+      # Perception's renderer bounds every host command with `timeout` (its README prerequisites);
+      # macOS ships none, so only coreutils' gtimeout goes on the path under that name.
+      - name: timeout for Perception's canary
+        if: ${{ matrix.part == 'Perception' }}
+        run: |
+          command -v gtimeout >/dev/null || brew install coreutils
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$(command -v gtimeout)" "$RUNNER_TEMP/bin/timeout"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
       - name: Lay the package manager and Perception for their canary
         if: ${{ matrix.part == 'Perception' }}
         uses: ./.github/actions/downstream
