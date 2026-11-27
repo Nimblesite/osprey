@@ -157,7 +157,7 @@ REGISTRY_HOSTED_CONTEXT := Makefile scripts src/toolchain/Cargo.toml src/toolcha
 	src/osprey/packages/Makefile src/osprey/packages/manager/api src/osprey/packages/manager/core \
 	src/osprey/packages/manager/host $(REGISTRY_HOSTED_DOCKERFILE)
 
-.PHONY: registry-hosted-image
+.PHONY: registry-hosted-image registry-hosted-image-check
 ## registry-hosted-image: Build the Cloud Run linux/amd64 image from the checked-out commit.
 registry-hosted-image:
 	@set -eu; mkdir -p target; context=$$(mktemp target/registry-hosted-context.XXXXXX); \
@@ -165,6 +165,10 @@ registry-hosted-image:
 	  git archive --format=tar --output="$$context" "$$revision" $(REGISTRY_HOSTED_CONTEXT); \
 	  docker buildx build --platform linux/amd64 --load --file $(REGISTRY_HOSTED_DOCKERFILE) \
 	    --label "org.opencontainers.image.revision=$$revision" --tag "$(REGISTRY_HOSTED_IMAGE)" - < "$$context"
+
+## registry-hosted-image-check: Smoke-test the Linux image with mounted config and both listener ports.
+registry-hosted-image-check: registry-hosted-image
+	node scripts/packages/check-registry-hosted-image.mjs "$(REGISTRY_HOSTED_IMAGE)"
 
 .PHONY: registry-website registry-website-fixture registry-website-check
 ## registry-website-check: Build an isolated Pages artifact and exercise its publisher flow in Chromium.
