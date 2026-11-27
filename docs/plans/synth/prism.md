@@ -6,7 +6,7 @@ Contracts: [Synthesis.md](../../specs/synth/Synth.md) ([SYNTH-GRAPH], [SYNTH-SIG
 
 ## Graph editor [PRISM-ROUTING-INTEGRATION] [PRISM-ROUTING-PRESENTATION] [PRISM-ROUTING-CABLES] [PRISM-ROUTING-LAYOUT] [PRISM-ROUTING-TIMELINE]
 
-- [ ] Replace the remaining fixed-patch coverage and implementation once keyboard, waveform and modulation interactions have migrated; the default launch auditions the real graph, not the fixed demo; the picker advertises MIDI generators, modulation processors and VST nodes only once they work: `make -C src/toolchain/targets/tests synth` [PRISM-ROUTING-INTEGRATION].
+- [ ] Replace the remaining fixed-patch coverage and implementation once keyboard, waveform and modulation interactions have migrated; the default launch auditions the real graph, not the fixed demo (the editor draws the keyboard, but `EditorLayout::keyAt` has no caller, so no key plays; `Studio`, `Synth` and `Voice` are reached only from the daw and synth tests, and only `Synth::played` honours Windows' `--play` helper); the picker advertises MIDI generators, modulation processors and VST nodes only once they work: `make -C src/toolchain/targets/tests synth` [PRISM-ROUTING-INTEGRATION].
 - [ ] Movable node positions with screenshot and windowed verification; node geometry, pointer interaction and accessibility bounds checked in the real window [PRISM-ROUTING-INTEGRATION] [PRISM-ROUTING-LAYOUT].
 - [ ] Adaptive canvas resizing restored in the unified editor; the native window matches the original Prism design (fixed-studio tests do not validate the graph editor) [PRISM-ROUTING-PRESENTATION].
 - [ ] Real mouse dragging and cable deletion verified in the rebuilt window; the windowed regression journey captured [PRISM-ROUTING-CABLES].
