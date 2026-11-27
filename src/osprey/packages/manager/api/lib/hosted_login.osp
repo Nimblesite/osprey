@@ -1,6 +1,7 @@
 namespace registry_api;
 import registry::Digests
 import registry::Bytes
+import registry::Checked
 import registry::Json
 import registry::JsonRead
 import registry::Sha256
@@ -98,12 +99,7 @@ module HostedLogin {
     export fn callback(oauth, path, headers, claim, open) = andThen(receivedCode(path), fn(code) =>
         andThen(cookieTokens(headers), fn(tokens) => verified(oauth, code, tokens, claim, open)))
 
-    fn now() = {
-        let result = perform Host::Process.run("date -u +%s")
-        let seconds = parseInt(trim(result.stdout)) ?: 0
-        if result.status == 0 && seconds > 0 { Success { value: seconds } }
-        else { Error { message: "auth.clock-unavailable" } }
-    }
+    fn now() = Checked::mapError(Host::utcSeconds(), fn(_reason) => "auth.clock-unavailable")
 
     fn verifiedNative(config, path, headers) = andThen(callback(config.oauth, path, headers, LoginFlow::redeem,
         fn(context, envelope) => LoginKms::unseal(config.key, context, envelope)), fn(session) =>

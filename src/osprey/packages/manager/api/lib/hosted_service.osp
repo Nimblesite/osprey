@@ -7,6 +7,7 @@ import registry::Json
 import registry::Canonical
 import registry::PublicCatalog
 import registry::JsonRead
+import registry::Maybe
 
 /// Process liveness and public ingress use separate listeners [PACKAGE-HOSTED-TOPOLOGY].
 module HostedService {
@@ -32,16 +33,40 @@ module HostedService {
 
     fn field(document, key) = JsonRead::text(JsonRead::field(document, key))
 
+    fn validSecret(value) = byteLength(value) >= 32 && byteLength(value) <= 256
+        && Bytes::everyByte(value, fn(b) => b > 32 && b < 127)
+
+    fn invalidConfig() = Error { message: "hosted.config-invalid" }
+
+    fn parseOverlap(value, active) = match value {
+        Json::Obj { members } => {
+            let secret = field(value, "secret")
+            let expiry = JsonRead::number(JsonRead::field(value, "expiresAtUnixSeconds"))
+            if length(members) != 2 || !validSecret(secret) || secret == active || expiry <= HostedRequest::maxOverlapSeconds {
+                invalidConfig()
+            } else {
+                Success { value: Maybe::some(HostedRequest::EdgeSecretOverlap { secret: secret, expiresAtUnixSeconds: expiry }) }
+            }
+        }
+        _ => invalidConfig()
+    }
+
+    fn edgeOverlap(document, active) = match Json::get(document, "edgeSecretOverlap") {
+        Success { value } => parseOverlap(value, active)
+        Error => Success { value: Maybe::none() }
+    }
+
     fn policyOf(document) = {
         let api = field(document, "apiHost")
         let origin = field(document, "websiteOrigin")
         let secret = field(document, "edgeSecret")
         if !OAuth::validOrigin("https://${api}") || !OAuth::validOrigin(origin) || origin == "https://${api}"
-            || byteLength(secret) < 32 || byteLength(secret) > 256 || !Bytes::everyByte(secret, fn(b) => b > 32 && b < 127) {
-            Error { message: "hosted.config-invalid" }
+            || !validSecret(secret) {
+            invalidConfig()
         } else {
-            Success { value: HostedRequest::Policy { allowedHost: api, allowedOrigin: origin, edgeSecret: secret,
-                cookieName: HostedLogin::sessionCookieName, csrfToken: "", maxBody: 1048576 } }
+            andThen(edgeOverlap(document, secret), fn(overlap) => Success { value: HostedRequest::Policy {
+                allowedHost: api, allowedOrigin: origin, edgeSecret: secret, edgeSecretOverlap: overlap,
+                cookieName: HostedLogin::sessionCookieName, csrfToken: "", maxBody: 1048576 } })
         }
     }
 

@@ -2,6 +2,7 @@
   "spec": "[PACKAGE-TYPE-INVARIANTS]",
   "description": "JSON values that SchemaCheck must accept for the named type; digests are 64 lowercase hex, the datetime is 2024-01-02T03:04:05.006Z, and the uuid is 123e4567-e89b-12d3-a456-426614174000.",
   "cases": [
+    {"type": "EdgeSecretOverlap", "value": {"secret": "fixture-only-retiring-edge-credential", "expiresAtUnixSeconds": 1800000000}},
     {"type": "PackageKey", "value": {"scope": "finch", "name": "ledger"}},
     {"type": "SourceRef", "value": {"forge": "github", "repositoryId": "finch/ledger", "subdirectory": "src", "commit": "deadbeef"}},
     {"type": "ReleaseId", "value": {"package": {"scope": "finch", "name": "ledger"}, "epoch": 1, "ordinal": 2, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},

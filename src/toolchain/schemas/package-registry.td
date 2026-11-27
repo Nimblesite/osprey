@@ -32,6 +32,7 @@ type BrowserSession { id: Uuid cookieDigest: Digest bindingId: Uuid principalId:
 type HostedOAuthConfig { supabaseOrigin: String callback: String websiteOrigin: String publishableKey: String }
 type HostedLoginSettings { oauth: HostedOAuthConfig key: String sessionKey: String }
 type HostedLoginRedirect { location: String cookie: String }
+type EdgeSecretOverlap { secret: String expiresAtUnixSeconds: Int }
 type PublicCatalogNotice { path: RelativePath text: String }
 type PublicCatalogRelease { epoch: CompatibilityEpoch ordinal: ReleaseOrdinal digest: Digest publisherId: String publisherName: String licenseExpression: String notices: List<PublicCatalogNotice> }
 type PublicCatalogEntry { key: String keywords: List<String> releases: List<PublicCatalogRelease> summary: String warnings: List<String> }

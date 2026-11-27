@@ -1,5 +1,6 @@
 namespace hosted_tests;
 import registry::Policy
+import registry_host::Native
 
 /// Request admission and native listener isolation [PACKAGE-HOSTED-EDGE].
 fn suites() = {
@@ -11,4 +12,4 @@ fn suites() = {
     0
 }
 
-fn main() = Policy::guarded(suites)
+fn main() = Policy::guarded(fn() => Native::process()(suites))

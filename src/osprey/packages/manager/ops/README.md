@@ -14,6 +14,10 @@ Run `make -C src/osprey/packages registry-hosted-image-check` with Docker Buildx
 
 Cloud Run mounts `/run/registry/runtime.json` with `apiHost`, `websiteOrigin` and `edgeSecret`. Only port 8081 answers `GET /v1/ready`. The catalog returns 503 when its PostgreSQL projection is missing, malformed or expired. After auditing the candidate image, record its Artifact Registry manifest digest in the Terraform `image` variable. Hosted publication still requires the authorization and verification pipeline.
 
+To rotate the edge credential, create a new runtime secret version with the new value in `edgeSecret` and the retiring value in `edgeSecretOverlap.secret`. Set `edgeSecretOverlap.expiresAtUnixSeconds` to the planned UTC cutover deadline. The API admits the retiring value only during the 15 minutes before that deadline and refuses it when the clock is unavailable. Configuration without an overlap accepts only the current value.
+
+Bring all traffic-serving revisions onto the rotation configuration before changing the hostname-scoped Cloudflare header overwrite for the API and source-download origins. Before the deadline, verify that the new rule serves both origins and browser preflight. After the deadline, verify that the retiring value returns 403, publish a secret version with the overlap removed, and confirm that rollback candidates also use the new credential.
+
 Run `make -C src/osprey/packages registry-website-check` to test the packaged Pages upload flow. The check opens the extracted site in Chromium with its generated CSP and tests signed-out, signed-in and unavailable session responses from a fixture API. It also verifies that rebuilding the ZIP from the extracted files reproduces its SHA-256.
 
 Run `make -C src/osprey/packages registry-integration-check` for the full local rehearsal of the packaged website against the native API and a disposable PostgreSQL database. Required PR CI builds the site fixture and pinned migration tool once and runs `registry-integration-verify` against the downloaded artifacts.

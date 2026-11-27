@@ -1,5 +1,7 @@
 namespace registry_api;
 import registry::Bytes
+import registry::Maybe
+import registry_host::Host
 
 /// The hosted-request admission gate, evaluated in the order required by
 /// [PACKAGE-HOSTED-EDGE]: parse headers, check the edge secret, then the
@@ -16,14 +18,17 @@ module HostedRequest {
     let bodyStatus = 413
     let uriTooLong = 414
     let misdirected = 421
+    export let maxOverlapSeconds = 900
 
     /// The raw request as received from the ingress chain.
     export type Incoming = { method: string, uri: string, headerBlock: string, body: string }
 
+    export type EdgeSecretOverlap = { secret: string, expiresAtUnixSeconds: int }
+
     /// The environment policy every request is admitted against.
     export type Policy = {
         allowedOrigin: string, allowedHost: string, edgeSecret: string,
-        cookieName: string, csrfToken: string, maxBody: int
+        edgeSecretOverlap: Maybe::Maybe<EdgeSecretOverlap>, cookieName: string, csrfToken: string, maxBody: int
     }
 
     /// The admitted request echoed back by the gate.
@@ -40,10 +45,31 @@ module HostedRequest {
     fn stop(status, code) = Stop { verdict: rejected(status, code) }
     fn admitted(request: Incoming) = HostedHeaders::Ok { value: Admission { method: request.method, uri: request.uri, body: request.body } }
 
+    fn withinOverlap(expiry) = match Host::utcSeconds() {
+        Success { value } => value >= expiry - maxOverlapSeconds && value < expiry
+        Error => false
+    }
+
+    fn overlapping(expected, previous: EdgeSecretOverlap, presented) = {
+        // Evaluate both comparisons before selecting the matching credential.
+        let active = if Bytes::equalToken(expected, presented) { 1 } else { 0 }
+        let retiring = if Bytes::equalToken(previous.secret, presented) { 2 } else { 0 }
+        match active + retiring {
+            1 => true
+            2 => withinOverlap(previous.expiresAtUnixSeconds)
+            _ => false
+        }
+    }
+
+    fn matches(policy, secret) = policy.edgeSecret != "" && match policy.edgeSecretOverlap {
+        Maybe::Present { value } => overlapping(policy.edgeSecret, value, secret)
+        _ => Bytes::equalToken(policy.edgeSecret, secret)
+    }
+
     /// The edge secret first, before routing, auth parsing or body work.
     fn edgeStage(headers, policy) = match HostedHeaders::find(headers, "x-edge-secret") {
         Success { value } => {
-            if policy.edgeSecret != "" && Bytes::equalToken(policy.edgeSecret, value) { Pass } else { stop(forbidden, "req.edge-secret") }
+            if matches(policy, value) { Pass } else { stop(forbidden, "req.edge-secret") }
         }
         Error => stop(forbidden, "req.edge-secret")
     }

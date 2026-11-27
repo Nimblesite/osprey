@@ -1,6 +1,7 @@
 namespace hosted_tests;
 import registry_api::HostedRequest
 import registry_api::HostedHeaders
+import registry::Maybe
 
 /// The request gate in order: edge secret, host, method, URI and body
 /// bounds, then the credentialed origin/CSRF chain. Implements
@@ -9,10 +10,11 @@ module RequestTests {
     let v1Packages = "/v1/packages"
     let contentLengthRefusal = "400:req.content-length"
 
-    let policy = HostedRequest::Policy {
+    fn policy() = HostedRequest::Policy {
         allowedOrigin: "https://packages.example.test",
         allowedHost: "api.example.test",
         edgeSecret: "s3cr3t-edge",
+        edgeSecretOverlap: Maybe::none(),
         cookieName: "session",
         csrfToken: "csrf-tok",
         maxBody: 1024
@@ -25,12 +27,12 @@ module RequestTests {
     fn verdictOf(v) = if HostedHeaders::isOk(v) { "admitted" }
         else { "${HostedHeaders::statusOf(v)}:${HostedHeaders::codeOf(v)}" }
 
-    fn raw(method, uri, headers, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers, body), policy))
+    fn raw(method, uri, headers, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers, body), policy()))
 
     fn verdict(method, uri, extra, body) = raw(method, uri, "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test" + (if extra == "" { "" } else { "\r\n" + extra }), body)
 
     fn admitted() = checkAll("request: clean requests admitted", [
-        match HostedRequest::admit(incoming("POST", "/v1/publish", "Host: api.example.test\r\nX-Edge-Secret: s3cr3t-edge", "release"), policy) {
+        match HostedRequest::admit(incoming("POST", "/v1/publish", "Host: api.example.test\r\nX-Edge-Secret: s3cr3t-edge", "release"), policy()) {
             HostedHeaders::Ok { value } => value.method == "POST" && value.uri == "/v1/publish" && value.body == "release"
             _ => false
         },

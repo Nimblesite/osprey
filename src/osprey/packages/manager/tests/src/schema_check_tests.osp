@@ -66,7 +66,7 @@ module SchemaCheckTests {
         "PrincipalKind", "HumanPrincipalKind", "PrincipalState", "OrganizationState", "OrganizationRole",
         "AccessState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission",
         "AdminTransferState", "InvitationState", "MaintenanceReportState", "RegistryPrincipal",
-        "PublicCatalogNotice", "PublicCatalogRelease", "PublicCatalogEntry", "PublicCatalogPage", "PendingLogin", "BrowserSession", "HostedOAuthConfig", "HostedLoginSettings", "HostedLoginRedirect", "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
+        "PublicCatalogNotice", "PublicCatalogRelease", "PublicCatalogEntry", "PublicCatalogPage", "PendingLogin", "BrowserSession", "HostedOAuthConfig", "HostedLoginSettings", "HostedLoginRedirect", "EdgeSecretOverlap", "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
         "PackagePermissionGrant", "PackageAdminTransfer", "OrganizationInvitation",
         "PackageMaintenanceReport", "GovernanceEventKind", "GovernanceEvent"
     ]
@@ -75,8 +75,8 @@ module SchemaCheckTests {
         let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
         match result {
             Success { value } => checkAll("schema model declares every type exactly once", [
-                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [117, 10]),
-                    length(filterList(value.decls, isStruct)) == 80,
+                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [118, 10]),
+                    length(filterList(value.decls, isStruct)) == 81,
                     length(filterList(value.decls, isUnion)) == 27,
                     everyNameResolves(value)
             ])

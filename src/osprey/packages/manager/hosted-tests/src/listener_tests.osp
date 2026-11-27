@@ -1,6 +1,7 @@
 namespace hosted_tests;
 import registry_api::HostedService
 import registry_api::HostedLogin
+import registry_host::Host
 
 /// Drive both real listeners and check their distinct public contracts [PACKAGE-HOSTED-TOPOLOGY].
 module ListenerTests {
@@ -10,6 +11,11 @@ module ListenerTests {
     let problemReply = "404|no-store|application/problem+json|"
 
     let valid = "{\"apiHost\":\"api.example.test\",\"websiteOrigin\":\"https://packages.example.test\",\"edgeSecret\":\"test-only-secret-with-at-least-32-bytes\"}"
+
+    let oldSecret = "retiring-test-secret-with-at-least-32-bytes"
+
+    fn withOverlap(config, overlap) = take(config, byteLength(config) - 1) + ",\"edgeSecretOverlap\":" + overlap + "}"
+    fn overlap(secret, deadline) = "{\"secret\":${secret},\"expiresAtUnixSeconds\":${deadline}}"
 
     fn fetch(port, path, extra) = match httpCreateClient("http://127.0.0.1:${port}", 2000) {
         Error { message } => message
@@ -74,10 +80,10 @@ module ListenerTests {
         Success { value: 0 }
     }
 
-    fn live() = {
+    fn live(source, exercise) = {
         let port = 20000 + random() % 15000
-        let outcome = andThen(HostedService::config(valid), fn(policy) => HostedService::withListeners(
-            policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn(_digest) => Error { message: "missing" }, HostedLogin::unavailable, fn(_path, _headers) => HostedLogin::unavailable(), fn(_method, _token) => HostedLogin::unavailable(), fn() => requests(port)))
+        let outcome = andThen(HostedService::config(source), fn(policy) => HostedService::withListeners(
+            policy { allowedHost: "127.0.0.1" }, "content.example.test", "127.0.0.1", port, port + 1, fn() => Success { value: projection }, fn(_digest) => Error { message: "missing" }, HostedLogin::unavailable, fn(_path, _headers) => HostedLogin::unavailable(), fn(_method, _token) => HostedLogin::unavailable(), fn() => exercise(port)))
         match outcome {
             Error { message } => check("two listeners start", "ready", message)
             Success { value } => check("listeners finish the request sequence", 0, value)
@@ -94,8 +100,47 @@ module ListenerTests {
         refused(replace(valid, "test-only-secret-with-at-least-32-bytes", "") ?: valid),
         refused(replace(valid, "api.example.test", "packages.example.test") ?: valid)
     ])
+    fn clock(seconds, status) = handler Host::Process {
+        run command => Host::Run { status: if command == "date -u +%s" { status } else { 1 }, stdout: toString(seconds), stderr: "" }
+    }
+
+    fn overlapRequests(port, accepted) = {
+        let edge = "X-Edge-Secret: ${oldSecret}"
+        let current = "X-Edge-Secret: test-only-secret-with-at-least-32-bytes"
+        checkAll("retiring edge secret uses the live bounded clock", [
+            startsWith(fetch(port, v1Packages, edge), if accepted { jsonReply } else { "403|no-store|" }),
+            startsWith(fetch(port, v1Packages, current), jsonReply),
+            startsWith(fetch(port, v1Packages, "X-Edge-Secret: missing"), "403|no-store|"),
+            startsWith(fetch(port, v1Packages, current + "\r\n" + edge), "400|no-store|")
+        ])
+        Success { value: 0 }
+    }
+
+    fn quoted(text) = "\"${text}\""
+    fn rotationAt(seconds, status, accepted) = clock(seconds, status)(fn() =>
+        live(withOverlap(valid, overlap(quoted(oldSecret), "2000")), fn(port) => overlapRequests(port, accepted)))
+
+    fn rotating() = {
+        rotationAt(1099, 0, false)
+        rotationAt(1100, 0, true)
+        rotationAt(1999, 0, true)
+        rotationAt(2000, 0, false)
+        rotationAt(1999, 1, false)
+    }
+
+    fn invalidOverlap() = checkAll("malformed edge overlap prevents startup", [
+        refused(withOverlap(valid, "null")),
+        refused(withOverlap(valid, "{}")),
+        refused(withOverlap(valid, overlap(quoted("short"), "2000"))),
+        refused(withOverlap(valid, overlap(quoted("test-only-secret-with-at-least-32-bytes"), "2000"))),
+        refused(withOverlap(valid, overlap(quoted(oldSecret), quoted("2000")))),
+        refused(withOverlap(valid, overlap(quoted(oldSecret), "900")))
+    ])
+
     export fn run() = {
         test("hosted configuration", invalidConfig)
-        test("hosted API live listeners", live)
+        test("hosted API live listeners", fn() => live(valid, requests))
+        test("hosted API edge rotation", rotating)
+        test("hosted configuration edge overlap", invalidOverlap)
     }
 }
