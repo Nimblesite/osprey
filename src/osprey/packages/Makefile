@@ -25,18 +25,13 @@ package-coverage: build
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
 
-## package-checks: Package licences, hashing, the VS Code package suite and the package workspace
-##   WASM. Expect the 19 bundles to match src/osprey/packages/license-audit.json, every selected
-##   test to pass, and `Package workspace WASM startup: PASS`. The workspace is built from
-##   Nimblesite/osprey-packages, so run `make downstream` first; the governance, schema and
-##   migration suites run in that repository. [REPO-SPLIT]
+## package-checks: Package licences and the VS Code package suite. Expect the 19 bundles to match
+##   src/osprey/packages/license-audit.json and every selected test to pass. The package manager's
+##   hashing, workspace and registry suites run in Nimblesite/osprey-packages. [REPO-SPLIT]
 package-checks: build
 	node scripts/packages/verify-package-licenses.mjs
 	node --test scripts/packages/test-package-licenses.mjs
-	python3 scripts/packages/test-package-sha256.py
 	$(BIN) src/osprey/packages/vscode/tests --run --quiet
-	$(MAKE) target/package-workspace.wasm
-	node $(EXT_DIR)/scripts/verify-package-workspace.mjs target/package-workspace.wasm
 
 ## package-coverage-record: Write dated measurements to
 ##   target/coverage/packages/measurements.json; coverage-thresholds.json stays
@@ -71,15 +66,5 @@ express-bench:
 .PHONY: express-oracle
 express-oracle:
 	cd $(ROOT)/src/osprey/packages/express/oracle && npm ci --no-audit --no-fund && node record.mjs
-
-.PHONY: registry-serve
-## registry-serve: Serve this repository's packages (src/osprey/packages/*, published
-##                 into target/local-registry) over HTTP on 127.0.0.1:8787
-##                 with the Osprey folder-registry server. Ctrl-C stops it.
-registry-serve: target/osprey-registry target/local-registry.stamp
-	@$(MKDIR) target/local-registry-server
-	@printf '{ "root": "%s", "address": "127.0.0.1", "port": 8787 }\n' "$(abspath target/local-registry)" \
-	  > target/local-registry-server/registry-server.json
-	cd target/local-registry-server && $(abspath target/osprey-registry)
 
 endif

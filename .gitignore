@@ -34,6 +34,8 @@
 /scripts/make/daw-playback-rate.mjs
 /src/toolchain/targets/macos/tests/prism-icon.sh
 /scripts/make/osprey-packages.mk
+/scripts/packages/test-package-sha256.py
+/scripts/packages/stage-local-registry.sh
 /scripts/make/perception.mk
 /scripts/make/daw-clicks.swift
 /scripts/make/sample-attribution.py

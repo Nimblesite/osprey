@@ -85,9 +85,9 @@ target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build src/osprey/workbench --target=wasm32 --quiet --no-warnings -o $@
 
 # The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
-# registry server, which the extension bundles, and the repository's own
+# registry server, which the extension's CI tests stage, and the repository's own
 # packages published into a folder registry with `publish --folder`, which
-# `make -C src/osprey/packages registry-serve` serves. The VSIX carries no
+# osprey-packages' `registry-serve` serves. The VSIX carries no
 # packages: building it never publishes them. The stamp sits outside the tree,
 # where a stray file would be refused by the catalog walk.
 target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
