@@ -423,6 +423,8 @@ test ("physical instruments reject fractional burst lengths, repeat intervals an
 
 test ("replacing a live delay resets its storage, retains oscillator state and refuses a fresh grain clock", \() => arithmetic rebaseJourney)
 
+test ("a cutoff edit keeps oscillator and filter state and changes the sound; a routing change sounds different", \() => arithmetic editAudioJourney)
+
 test ("send taps retain frame position across blocks and report missing sources", \() => arithmetic sendCaptureJourney)
 
 test ("spectral inspection reports the channel, clock and complex phase of a centered impulse", \() => arithmetic inspectionJourney)
