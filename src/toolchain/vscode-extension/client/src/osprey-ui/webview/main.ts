@@ -27,11 +27,11 @@ const client: Client = {
   post: {
     control: (ordinal, words) => {
       client.posted += 1;
-      vscode.postMessage({ type: "event", kind: 0, ordinal, words });
+      vscode.postMessage({ type: "event", kind: 0, ordinal, words, seq: client.posted });
     },
     event: (event) => {
       client.posted += 1;
-      vscode.postMessage(event);
+      vscode.postMessage({ ...event, seq: client.posted });
     },
     external: (url) => vscode.postMessage({ type: "external", url }),
   },
@@ -153,7 +153,7 @@ function render(message: RenderMessage | FrameMessage): void {
   const ready = readRuns(message);
   clientDiagnostics(client, message.diagnostics);
   if (!ready && message.type === "frame") return;
-  applyRender(client, message.type === "render" ? message.html
+  applyRender(client, message.answers, message.type === "render" ? message.html
     : renderShown(shown ?? { controls: [], roots: [], scenes: new Map() }, { assets: new Map(Object.entries(assetMap)) }));
 }
 
