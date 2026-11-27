@@ -143,10 +143,11 @@ registry-infra-check:
 	terraform -chdir=$(REGISTRY_TERRAFORM) validate
 
 .PHONY: registry-hosted-api
+REGISTRY_HOSTED_BINARY ?= target/osprey-registry-hosted
 ## registry-hosted-api: Compile the native Cloud Run API listener for the current platform.
-registry-hosted-api: target/osprey-registry-hosted
+registry-hosted-api: $(REGISTRY_HOSTED_BINARY)
 
-target/osprey-registry-hosted: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+$(REGISTRY_HOSTED_BINARY): $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build src/osprey/packages/manager/api/hosted --quiet --no-warnings -o $@
 
 REGISTRY_HOSTED_IMAGE ?= osprey-registry-hosted:local
@@ -162,8 +163,10 @@ REGISTRY_HOSTED_CONTEXT := Makefile scripts src/toolchain/Cargo.toml src/toolcha
 registry-hosted-image:
 	@set -eu; mkdir -p target; context=$$(mktemp target/registry-hosted-context.XXXXXX); \
 	  trap 'rm -f -- "$$context"' EXIT; revision=$$(git rev-parse HEAD); \
+	  compiler_inputs=$$(git rev-parse "$$revision:src/toolchain" "$$revision:Makefile" "$$revision:scripts" "$$revision:$(REGISTRY_HOSTED_DOCKERFILE)"); \
+	  compiler_key=$$(printf '%s\n' "$$compiler_inputs" | git hash-object --stdin); \
 	  git archive --format=tar --output="$$context" "$$revision" $(REGISTRY_HOSTED_CONTEXT); \
-	  docker buildx build --platform linux/amd64 --load --file $(REGISTRY_HOSTED_DOCKERFILE) \
+	  docker buildx build --platform linux/amd64 --load --file $(REGISTRY_HOSTED_DOCKERFILE) --build-arg "COMPILER_INPUTS=$$compiler_key" \
 	    --label "org.opencontainers.image.revision=$$revision" --tag "$(REGISTRY_HOSTED_IMAGE)" - < "$$context"
 
 ## registry-hosted-image-check: Smoke-test the Linux image with mounted config and both listener ports.
