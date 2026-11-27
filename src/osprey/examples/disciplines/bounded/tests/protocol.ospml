@@ -1,7 +1,5 @@
 namespace bounded
 
-import bounded::Shell
-
 (** The checker protocol of [TYPES-DISCIPLINE-PROTOCOL], driven exactly as the
     compiler drives it: one request line on standard input, one JSON response
     line on standard output, byte-exact against a golden. The subject is the

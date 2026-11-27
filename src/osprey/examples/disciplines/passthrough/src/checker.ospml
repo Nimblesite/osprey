@@ -435,7 +435,15 @@ module Tool
         Success text => text
         Error _ => ""
 
-    (** `text` as one word for this host's spawner. *)
+    (** `text` as one word for this host's spawner.
+    # Examples
+    ```osprey
+    print "${Tool::quoted "a" == Tool::quotedFor (!isEmpty (env "SystemRoot" ?: ""), "a")}"
+    ```
+    ```output
+    true
+    ```
+    *)
     export quoted text = quotedFor (onWindows (), text)
 
     (** `text` as one word: single-quoted for a POSIX shell, each embedded `'`

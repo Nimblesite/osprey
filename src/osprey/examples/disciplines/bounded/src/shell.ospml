@@ -8,18 +8,50 @@ namespace bounded
     line in one more pair. *)
 module Shell
     // Windows always sets SystemRoot, and MSYS2's shell keeps it where it drops OS.
-    (** Whether this process runs on Windows. *)
+    (** Whether this process runs on Windows.
+    # Examples
+    ```osprey
+    print "${Shell::windows () == !isEmpty (env "SystemRoot" ?: "")}"
+    ```
+    ```output
+    true
+    ```
+    *)
     export windows () = !isEmpty (env "SystemRoot" ?: "")
 
-    (** `text` as one word of a line for the spawner. *)
+    (** `text` as one word of a line for the spawner.
+    # Examples
+    ```osprey
+    print "${Shell::word (false, "it's")} ${Shell::word (true, "C:\\a b")}"
+    ```
+    ```output
+    'it'\''s' "C:\a b"
+    ```
+    *)
     export word (windows, text) = match windows
         true => "\"" + text + "\""
         false => "'" + (replace (text, "'", "'\\''") ?: text) + "'"
 
-    (** `line` as the spawner runs it. *)
+    (** `line` as the spawner runs it.
+    # Examples
+    ```osprey
+    print "${Shell::line (false, "'a' > 'b'")} ${Shell::line (true, "\"a\" > \"b\"")}"
+    ```
+    ```output
+    'a' > 'b' ""a" > "b""
+    ```
+    *)
     export line (windows, line) = match windows
         true => "\"" + line + "\""
         false => line
 
-    (** `text` with the CRLF line ends a Windows tool may write read as LF. *)
+    (** `text` with the CRLF line ends a Windows tool may write read as LF.
+    # Examples
+    ```osprey
+    print (length (Shell::lf "a\r\nb\n"))
+    ```
+    ```output
+    4
+    ```
+    *)
     export lf (text) = replace (text, "\r\n", "\n") ?: text
