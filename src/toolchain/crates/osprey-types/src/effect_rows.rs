@@ -60,7 +60,9 @@ pub(crate) use check::check;
 mod reports;
 pub use reports::LibraryExports;
 mod validate;
-use validate::{entry_errors, validate_arithmetic_initializers, validate_statement_handlers};
+use validate::{
+    entry_errors, validate_arithmetic_initializers, validate_statement_handlers,
+};
 mod gpu;
 use gpu::{gpu_kernel_slot, validate_gpu_kernel};
 mod validate_handlers;

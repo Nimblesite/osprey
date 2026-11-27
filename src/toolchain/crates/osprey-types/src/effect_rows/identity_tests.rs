@@ -330,7 +330,9 @@ fn foreign_callback_imports_cannot_inherit_builtin_provenance() {
         ));
         assert_eq!(
             diagnostics(&format!("{prefix}let result={name}(fn()=>perform Probe.value())\n")),
-            vec![TypeError::new("unhandled effect operations at program entry: Probe.value; add a matching `handle`")],
+            vec![TypeError::new("unhandled effect operations at program entry: Probe.value; add a matching `handle`")
+                .with_pos(Some(Position { line: 3, column: 0 }))],
+            "the diagnostic names the statement that performs (#402)"
         );
     }
 }

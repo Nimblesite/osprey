@@ -1,2 +1,2 @@
 11:15: type mismatch: cannot unify int with string
-unhandled effect operations at program entry: Recovery<string>.recover; add a matching `handle`
+6:0: unhandled effect operations at program entry: Recovery<string>.recover; add a matching `handle`

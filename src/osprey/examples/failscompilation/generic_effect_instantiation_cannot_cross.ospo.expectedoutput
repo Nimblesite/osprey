@@ -1,1 +1,1 @@
-unhandled effect operations at program entry: Signal<Count>.read; add a matching `handle`
+14:3: unhandled effect operations at program entry: Signal<Count>.read; add a matching `handle`

@@ -2,7 +2,6 @@
 //! higher-order arguments and handler results without capturing authority.
 
 use crate::effect_rows_tests::{assert_accepted, diagnostics};
-use crate::TypeError;
 
 const PROBE: &str = "effect Probe { value: fn() -> int }\n\
     fn fetch() -> int !Probe = perform Probe.value()\n\
@@ -14,14 +13,25 @@ const UNHANDLED: &str =
 const GENERIC_UNHANDLED: &str =
     "unhandled effect operations at program entry: Probe<int>.value; add a matching `handle`";
 
+/// The exact messages, and every program-entry diagnostic at a source
+/// position: it names the statement its fault enters through (#402).
 fn assert_errors(source: &str, expected: &[&str]) {
+    let actual = diagnostics(source);
     assert_eq!(
-        diagnostics(source),
-        expected
+        actual
             .iter()
-            .map(|message| TypeError::new(*message))
+            .map(|error| error.message.as_str())
             .collect::<Vec<_>>(),
+        expected,
         "{source}"
+    );
+    let entry = |error: &&crate::TypeError| error.message.contains("program entry");
+    assert!(
+        actual
+            .iter()
+            .filter(entry)
+            .all(|error| error.position.is_some()),
+        "{source}\n{actual:?}"
     );
 }
 

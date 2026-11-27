@@ -1,1 +1,1 @@
-unhandled effect operations at program entry: Pair.second; add a matching `handle`
+12:0: unhandled effect operations at program entry: Pair.second; add a matching `handle`
