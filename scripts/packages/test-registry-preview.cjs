@@ -86,6 +86,18 @@ async function checkPackagedAccount(browser, site, livePort) {
     await page.route(content + '/**', async route => {
       await route.fulfill({response:await atContent(new URL(route.request().url()).pathname)});
     });
+    const licenseBadge = page.locator('[id="e1.r1"] a.prose-license');
+    assert.equal(await licenseBadge.count(), 1);
+    const licenseUrl = new URL(await licenseBadge.getAttribute('href'));
+    assert.equal(licenseUrl.origin, content);
+    const license = await atContent(licenseUrl.pathname);
+    assert.equal(license.status(), 200);
+    assert.match(license.headers()['content-type'], /^text\/plain/);
+    assert.equal(license.headers()['x-content-type-options'], 'nosniff');
+    assert.match(await license.text(), /Atlas license <terms>/);
+    assert.match(await license.text(), /Extra license terms/);
+    assert.doesNotMatch(await license.text(), /Attribution only/);
+    assert.equal((await atContent(licenseUrl.pathname, {Cookie:'__Host-registry=opaque'})).status(), 421);
     const downloadLink = page.getByRole('link', {name:'Download e1.r1', exact:true});
     const href = new URL(await downloadLink.getAttribute('href'));
     assert.equal(href.origin, content);
@@ -316,6 +328,27 @@ async function checkLocalTagThreshold(browser) {
   await page.close();
 }
 
+async function checkLocalLicense(browser) {
+  const page = await browser.newPage({viewport: {width: 390, height: 900}});
+  const base = 'http://127.0.0.1:4187';
+  await page.goto(base + '/packages/@osprey/json/');
+  const release = page.locator('[id="e1.r1"]');
+  const license = release.locator('summary:has(.prose-license)');
+  assert.equal(await license.count(), 1);
+  const source = await page.request.get(new URL(await release.locator('.prose-download').getAttribute('href'), base).href);
+  const file = (await source.json()).files.find(entry => entry.path === 'LICENSE');
+  assert.ok(file);
+  const text = release.locator('pre').filter({hasText: 'Permission is hereby granted'});
+  assert.equal(await text.isVisible(), false);
+  await license.focus();
+  await license.press('Enter');
+  assert.ok(await text.isVisible());
+  assert.equal((await text.textContent()).trim(), file.text.trim());
+  await license.click();
+  assert.equal(await text.isVisible(), false);
+  await page.close();
+}
+
 async function checkCoverGeometry(browser) {
   const base = 'http://127.0.0.1:4187';
   const paths = ['/', '/publishers/', '/publishers/osprey-repository/', '/tags/',
@@ -323,6 +356,8 @@ async function checkCoverGeometry(browser) {
   for (const width of [320, 390, 768, 1440, 1600]) {
     const page = await browser.newPage({viewport:{width, height:900}});
     let origin;
+    let headerOrigin;
+    const header = page.locator('.prose-bar');
     for (const path of paths) {
       await page.goto(base + path);
       const panel = page.locator('main :is(.prose-intro, .prose-cover, .prose-publisher)').first();
@@ -335,9 +370,39 @@ async function checkCoverGeometry(browser) {
       const expectedWidth = Math.min(1216, width - (width <= 720 ? 27.2 : 48));
       assert.ok(Math.abs(bounds.width - expectedWidth) < .02, path);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), path);
+      headerOrigin ??= await header.boundingBox();
+      assert.deepEqual(await header.boundingBox(), headerOrigin, path);
+      assert.equal(await header.evaluate(node => getComputedStyle(node).position), 'fixed');
+      await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+      assert.deepEqual(await header.boundingBox(), headerOrigin, path + ' after scrolling');
     }
+    await page.goto(base + '/packages/@osprey/einops/e1.r1/docs/api/index.html');
+    await page.evaluate(() => scrollTo(0, document.body.scrollHeight));
+    assert.deepEqual(await header.boundingBox(), headerOrigin, 'Documentation header');
     await page.close();
   }
+}
+
+async function checkMobileMenu(browser) {
+  const page = await browser.newPage({viewport:{width:320, height:740}, hasTouch:true, isMobile:true});
+  const base = 'http://127.0.0.1:4187';
+  await page.goto(base + '/packages/@osprey/einops/e1.r1/docs/api/index.html');
+  const menu = page.locator('.prose-bar summary');
+  assert.equal(await menu.count(), 1);
+  for (const [name, path] of [['By tag', '/tags/'], ['By publisher', '/publishers/'],
+                             ['Upload a package', '/upload/'], ['Browse packages', '/']]) {
+    const link = page.locator('.prose-bar details').getByRole('link', {name});
+    assert.equal(await link.isVisible(), false);
+    await menu.tap();
+    assert.ok(await link.isVisible());
+    await Promise.all([page.waitForURL(base + path), link.tap()]);
+    assert.equal(new URL(page.url()).pathname, path);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  }
+  await page.setViewportSize({width:1440, height:900});
+  assert.equal(await menu.isVisible(), false);
+  assert.ok(await page.locator('.prose-bar').getByRole('link', {name:'Upload a package'}).isVisible());
+  await page.close();
 }
 
 (async () => {
@@ -348,7 +413,9 @@ async function checkCoverGeometry(browser) {
     if (process.argv.includes('--highlighting-only')) return await checkReferenceHighlighting(browser);
     if (process.argv.includes('--reference-scope-only')) return await checkPackageReferenceScope(browser);
     if (process.argv.includes('--tag-threshold-only')) return await checkLocalTagThreshold(browser);
+    if (process.argv.includes('--license-only')) return await checkLocalLicense(browser);
     if (process.argv.includes('--covers-only')) return await checkCoverGeometry(browser);
+    if (process.argv.includes('--mobile-menu-only')) return await checkMobileMenu(browser);
     if (!process.argv.includes('--tables-only')) require('node:child_process').execFileSync('make', ['-C','src/osprey/packages','registry-website-fixture']);
     if (process.argv.includes('--hosted-account-only')) return await checkHostedAccount(browser);
     await checkReferenceTable(browser);
@@ -356,7 +423,9 @@ async function checkCoverGeometry(browser) {
     await checkReferenceHighlighting(browser);
     await checkPackageReferenceScope(browser);
     await checkLocalTagThreshold(browser);
+    await checkLocalLicense(browser);
     await checkCoverGeometry(browser);
+    await checkMobileMenu(browser);
     await checkHostedAccount(browser);
     const catalog = await browser.newPage();
     await catalog.goto('http://127.0.0.1:4187/');
@@ -433,7 +502,8 @@ async function checkCoverGeometry(browser) {
       assert.equal(bundle.ordinal, 1);
       assert.equal(bundle.digest, await page.locator('[id="e1.r1"] code').textContent());
       assert.ok(bundle.files.some(file => file.path === 'osprey.toml'));
-      await page.getByRole('link', { name: 'Upload a package' }).click();
+      if (width <= 720) await page.locator('.prose-bar summary').click();
+      await page.locator('.prose-bar').getByRole('link', { name: 'Upload a package' }).click();
       await page.getByRole('heading', { name: 'Upload a package' }).waitFor();
       await page.getByLabel('Package', {exact:true}).selectOption('@osprey/fastapi');
       const commit = 'a'.repeat(40);

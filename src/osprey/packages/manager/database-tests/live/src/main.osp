@@ -98,14 +98,17 @@ fn publicCatalog() = {
     ])
 }
 
-let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:6f1de2d789fe080c782b2f56bd289fde94a4fb05201b137f4267784ac16c4975\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"},{\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"epoch\":1,\"licenseExpression\":\"Apache-2.0\",\"notices\":[],\"ordinal\":2,\"publisherId\":\"22222222-2222-4222-8222-222222222222\",\"publisherName\":\"Atlas Labs\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]},{\"key\":\"@atlas/render\",\"keywords\":[\"graphics\"],\"releases\":[{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"Image tools\",\"warnings\":[]}]}"
+let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"keywords\":[\"networking\",\"web\"],\"releases\":[{\"digest\":\"sha256:60e0c754a174ee3bdef1e326b9d25cf177f115dc0f87756f3e5b3096db2c0e25\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"},{\"digest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"epoch\":1,\"licenseExpression\":\"Apache-2.0\",\"notices\":[],\"ordinal\":2,\"publisherId\":\"22222222-2222-4222-8222-222222222222\",\"publisherName\":\"Atlas Labs\"}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]},{\"key\":\"@atlas/render\",\"keywords\":[\"graphics\"],\"releases\":[{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"epoch\":1,\"licenseExpression\":\"MIT\",\"notices\":[{\"path\":\"NOTICE.md\",\"text\":\"Adapted from Atlas upstream.\\nCopyright Atlas.\"}],\"ordinal\":1,\"publisherId\":\"11111111-1111-4111-8111-111111111111\",\"publisherName\":\"Atlas Engineering\"}],\"summary\":\"Image tools\",\"warnings\":[]}]}"
 
-let fixtureDigest = "sha256:6f1de2d789fe080c782b2f56bd289fde94a4fb05201b137f4267784ac16c4975"
+let fixtureDigest = "sha256:60e0c754a174ee3bdef1e326b9d25cf177f115dc0f87756f3e5b3096db2c0e25"
 
 fn fixtureSource(digest) = if digest == fixtureDigest {
     andThen(ReleaseFiles::assemble("@atlas/net/1.1", [
         Release::File { relPath: "src/main.osp", content: "fn main() = 0\n" },
-        Release::File { relPath: "osprey.toml", content: "key = ledger\n" }
+        Release::File { relPath: "osprey.toml", content: "key = ledger\n" },
+        Release::File { relPath: "LICENSE", content: "Atlas license <terms>\n" },
+        Release::File { relPath: "LICENSES/extra.txt", content: "Extra license terms\n" },
+        Release::File { relPath: "NOTICE.md", content: "Attribution only\n" }
     ]), Bundle::encode)
 } else { Success { value: "{}" } }
 fn fixtureCatalog() = {

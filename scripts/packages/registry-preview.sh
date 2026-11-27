@@ -72,8 +72,9 @@ while IFS= read -r key; do
     [[ "$license" != *$'\n'* && "$license" != *$'\r'* ]]
     notice_version=
     notices=$(jq -c '[.files[] | select(.path | test("^(notices?|third_party_notices)([.](txt|md))?$"; "i"))]' "$source_file")
+    licenses=$(jq -c '[.files[] | select(.path | test("^(licen[cs]e|copying)([.](txt|md))?$|^licenses/"; "i"))]' "$source_file")
     if [[ "$notices" != "[]" ]]; then notice_version="$version"; fi
-    render release "$version" "$digest" "$receipt" "$docs_status" "$license" "$notices" >> "$work/links"
+    render release "$version" "$digest" "$receipt" "$docs_status" "$license" "$notices" "$licenses" >> "$work/links"
   done < "$work/versions"
   row=$(render row "$key" "$summary" "$license")
   echo "$row" >> "$work/rows"

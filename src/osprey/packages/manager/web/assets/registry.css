@@ -27,11 +27,12 @@
   background: var(--paper);
 }
 * { box-sizing: border-box }
-body { margin: 0 }
+body { margin: 0; padding-block-start: var(--registry-header-height) }
 a { color: inherit; text-underline-offset: .2em }
 :focus-visible { outline: 3px solid #bd4302; outline-offset: 4px }
 .prose-bar, main { inline-size: min(var(--registry-content-width), calc(100% - 2 * var(--registry-gutter))); margin-inline: auto }
-.prose-bar { position: sticky; top: 0; z-index: 5; background: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 1rem; block-size: var(--registry-header-height); border-bottom: 1px solid var(--line) }
+.prose-bar { position: fixed; inset: 0 0 auto; z-index: 5; background: var(--paper); display: flex; align-items: center; justify-content: space-between; gap: 1rem; block-size: var(--registry-header-height); border-bottom: 1px solid var(--line) }
+.prose-mobile-menu { display: none }
 .prose-brand { display: inline-flex; align-items: center; gap: .65rem; font-weight: 750; text-decoration: none }
 .prose-bar nav { font-size: .875rem }
 main { padding-block: var(--registry-panel-offset) clamp(2rem, 5vw, 5rem) }
@@ -91,7 +92,13 @@ pre { overflow-x: auto; padding: 1rem; background: #e6eae1; border-radius: .35re
   .prose-bar { gap: .5rem }
   .prose-brand { gap: .4rem; font-size: .875rem }
   .prose-brand img { width: 28px; height: 28px }
-  .prose-bar nav a { padding: .6rem .65rem; font-size: .75rem }
+  .prose-desktop-nav { display: none }
+  .prose-mobile-menu { display: block; position: relative }
+  .prose-mobile-menu summary { display: flex; align-items: center; min-block-size: 2.75rem; padding: .4rem .85rem; border-radius: .35rem; background: var(--pine); color: white; font-weight: 650; cursor: pointer }
+  .prose-mobile-menu summary::-webkit-details-marker { display: none }
+  .prose-mobile-menu nav { position: absolute; inset: calc(100% + .5rem) 0 auto auto; display: grid; min-inline-size: 12rem; padding: .35rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--package-card); box-shadow: 0 .35rem 1rem #17292126 }
+  .prose-mobile-menu nav a { background: transparent; color: var(--pine) }
+  .prose-mobile-menu nav a:is(:hover, :focus-visible) { background: #e3eed9 }
   .prose-columns { grid-template-columns: 1fr }
   .prose-cover::after, .prose-intro::after { inset: 0 0 auto; height: .6rem; clip-path: none; background-size: 2.5rem 3rem }
   .prose-cover h1, .prose-intro h1, .prose-cover > p, .prose-intro > p { max-width: 100% }

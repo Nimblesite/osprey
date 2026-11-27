@@ -13,6 +13,7 @@ module HostedSource {
     export let unknownRelease = "catalog.unknown-release"
     export let prefix = "/v1/releases/"
     export let attachmentSuffix = "/source"
+    export let licenseSuffix = "/license"
 
     export type Verified = { release: Release::Served, download: bool }
     type Listed = { key: string, entry: Json::Value }
@@ -56,7 +57,7 @@ module HostedSource {
         let download = suffix == digest + attachmentSuffix
         match Digests::parse(digest) {
             Error => Error { message: unknownRelease }
-            Success => if suffix == digest || download { resolve(doc, digest, download, read) } else { Error { message: unknownRelease } }
+            Success => if suffix == digest || download || suffix == digest + licenseSuffix { resolve(doc, digest, download, read) } else { Error { message: unknownRelease } }
         }
     }
 

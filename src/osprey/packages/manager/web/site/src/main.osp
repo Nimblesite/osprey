@@ -132,9 +132,11 @@ fn main() = print(match trim(input()) {
         let digest = trim(input())
         let publisher = publisherLink(trim(input()))
         let docs = if trim(input()) == "generated" { "<a href=\"${version}/docs/api/index.html\">API documentation</a>" } else { "API documentation unavailable for this release" }
-        let license = Shell::licenseBadge(trim(input()))
+        let expression = trim(input())
         let notices = match jsonDecode(input()) { Success { value: JsonArray(items) } => Shell::notices(version, items) _ => "" }
-        "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><div>${license}</div><p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code>${notices}</article>"
+        let licenses = match jsonDecode(input()) { Success { value: JsonArray(items) } => items _ => [] }
+        let license = Shell::releaseLicense(expression, licenses)
+        "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a>${license}<p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code>${notices}</article>"
     }
     "hosted-package" => hostedPackage()
     "hosted-results" => {

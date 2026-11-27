@@ -49,7 +49,10 @@ module HostedCatalog {
         let digest = PublicCatalog::text(item, "digest")
         let label = version(item)
         let action = download(content, digest, label)
-        "<article class=\"prose-release\" id=\"${label}\"><h3>${label}</h3>${action}<p>${licenseBadge(item)}</p><p>Published by ${publisherLink(item)}</p><code>${digest}</code>${Shell::notices(label, PublicCatalog::notices(item))}</article>"
+        let license = if content == "" { licenseBadge(item) } else {
+            Shell::licenseLink(PublicCatalog::text(item, "licenseExpression"), "${content}/v1/releases/${digest}/license")
+        }
+        "<article class=\"prose-release\" id=\"${label}\"><h3>${label}</h3>${action}<p>${license}</p><p>Published by ${publisherLink(item)}</p><code>${digest}</code>${Shell::notices(label, PublicCatalog::notices(item))}</article>"
     }
     fn detail(item, content, popularTags) = {
         let key = PublicCatalog::text(item, "key")

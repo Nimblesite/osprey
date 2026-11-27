@@ -14,7 +14,7 @@ module Paths {
     let statePrefix = ".osprey/"
     let manifestName = "osprey.toml"
     let noticeStems = ["notice", "notices", "third_party_notices"]
-    let legalStems = ["license", "copying", "authors"]
+    let licenseStems = ["license", "licence", "copying"]
     let legalSuffixes = ["", ".txt", ".md"]
 
     fn segmentByte(b) = Bytes::isAlnumIn(b, [Bytes::dot, Bytes::underscore, Bytes::hyphen])
@@ -70,6 +70,11 @@ module Paths {
 
     export fn noticeDocument(path) = legalDocument(foldCase(path), noticeStems)
 
+    export fn licenseDocument(path) = {
+        let folded = foldCase(path)
+        legalDocument(folded, licenseStems) || startsWith(folded, "licenses/")
+    }
+
     fn legalDocument(path, stems) = foldList(stems, false, fn(found, stem) => found
         || foldList(legalSuffixes, false, fn(matched, suffix) => matched || path == "${stem}${suffix}"))
 
@@ -77,6 +82,6 @@ module Paths {
     /// Implements [PACKAGE-LICENSE-DISTRIBUTION].
     export fn publicationMetadata(path) = {
         let folded = foldCase(path)
-        path == manifestName || legalDocument(folded, legalStems) || legalDocument(folded, noticeStems) || startsWith(folded, "licenses/")
+        path == manifestName || licenseDocument(path) || legalDocument(folded, ["authors"]) || noticeDocument(path)
     }
 }

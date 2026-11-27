@@ -8,6 +8,8 @@ import registry::Canonical
 import registry::PublicCatalog
 import registry::JsonRead
 import registry::Maybe
+import registry::Paths
+import registry::Release
 
 /// Process liveness and public ingress use separate listeners [PACKAGE-HOSTED-TOPOLOGY].
 module HostedService {
@@ -183,7 +185,7 @@ module HostedService {
     }
 
     fn catalogDocument(doc, path, cors, source) = if path == "/v1/packages" { jsonReply(doc, cors) } else if startsWith(path, HostedSource::prefix) {
-        releaseResponse(HostedSource::request(doc, path, source), cors)
+        releaseResponse(HostedSource::request(doc, path, source), endsWith(path, HostedSource::licenseSuffix), cors)
     } else if startsWith(path, publisherPrefix) {
         publisherDocument(JsonRead::items(JsonRead::field(doc, "packages")), path, cors)
     } else {
@@ -193,10 +195,16 @@ module HostedService {
         }
     }
 
-    fn releaseResponse(resolution, cors) = match resolution {
+    fn releaseLicense(release: Release::Served, cors) = {
+        let files = filterList(release.files, fn(file) => Paths::licenseDocument(file.relPath))
+        if isEmpty(files) { problem(404, "release.license-unavailable") }
+        else { replyWith(200, "text/plain; charset=utf-8", join(mapList(files, fn(file) => "${file.relPath}\n\n${file.content}"), "\n\n"), cors) }
+    }
+
+    fn releaseResponse(resolution, license, cors) = match resolution {
         Error { message } => if message == HostedSource::unknownRelease { replyWith(404, problemType, "{\"code\":\"catalog.unknown-release\",\"status\":404}", cors)
         } else { unavailable(cors) }
-        Success { value } => if value.download {
+        Success { value } => if license { releaseLicense(value.release, cors) } else if value.download {
             match Bundle::encode(value.release) {
                 Success { value } => replyWith(200, jsonType, value, cors + "Content-Disposition: attachment; filename=\"osprey-source.json\"\r\n")
                 Error => unavailable(cors)
@@ -242,7 +250,7 @@ module HostedService {
     fn unavailable(cors) = replyWith(503, problemType, "{\"code\":\"registry.not-ready\",\"status\":503}", cors)
 
     fn contentRequest(headers, host, method, path) = host != "" && (HostedHeaders::find(headers, "host") ?: "") == host
-        && method == "GET" && startsWith(path, HostedSource::prefix) && endsWith(path, HostedSource::attachmentSuffix)
+        && method == "GET" && startsWith(path, HostedSource::prefix) && (endsWith(path, HostedSource::attachmentSuffix) || endsWith(path, HostedSource::licenseSuffix))
         && !HostedHeaders::has(headers, "cookie") && !HostedHeaders::has(headers, authorizationHeader)
 
     fn requestPolicy(policy, contentHost, method, path, fields) =
