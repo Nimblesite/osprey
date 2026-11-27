@@ -103,7 +103,6 @@ Spec: [DAW-COMMANDS], [DAW-KEYS], [DAW-ACCESS], [DAW-STORE] in [Perception](../.
 
 - [ ] Track and Master channel layouts (stereo default, any count) stored in the project; tracks render per channel [SYNTH-GRAPH-CHANNELS].
 - [ ] **Built-in instruments become patches**: every built-in (Pluck, Bow, Bell, Mallet, Operator, Drum) expressed as a patch of synth modules that renders the same samples (a test compares the two renders), `tracks/*.json` migrated, the built-in variants and their renderers deleted; the first edit no longer silently saves a fixed approximation [DAW-PROJECT-PATCH].
-- [ ] Song files drop `drive`, `space`, `intro`, `sustains` and track `reverb` (six files in `tracks/` still carry them; the root is title, tempo, sampleRate, buses and tracks) and the daw test suite for the new root runs with the suite type-checked in one piece [DAW-PROJECT].
 - [ ] Three adversarial-review defects fixed with a test at each edge: the far Space room scales size by 0.91, so a Space size below 0.2748 refuses the whole render; `Arrangements::frames` ignores sustain pads, cutting pads and their reverb at the end; at 8 kHz a 0.5 s intro tail gives 4,000 samples, under the 4,096 a sustain needs [DAW-REVIEW-OPEN].
 - [ ] Every new control, size or limit lands with a test at its edges, at every size it takes [DAW-REVIEW-OPEN].
 

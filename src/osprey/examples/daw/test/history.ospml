@@ -207,6 +207,13 @@ projectRefusalJourney () = encoded ((timeline [keysTrack ()]), \text =>
     forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":19.9", why = arranged }, { from = "\"tempo\":120.0", to = "\"tempo\":400.5", why = arranged }, { from = "\"attack\":0.01", to = "\"attack\":10.5", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0005", why = gated }, { from = "\"release\":0.1", to = "\"release\":0.0", why = gated }], \c => failsWith (daw::SongFiles::decode (replace text c.from c.to ?: text), c.why))
     forEachList ([{ from = "\"tempo\":120.0", to = "\"tempo\":20.0" }, { from = "\"tempo\":120.0", to = "\"tempo\":400.0" }, { from = "\"attack\":0.01", to = "\"attack\":0.001" }, { from = "\"attack\":0.01", to = "\"attack\":10.0" }, { from = "\"release\":0.1", to = "\"release\":0.001" }, { from = "\"release\":0.1", to = "\"release\":10.0" }], \c => decoded ((replace text c.from c.to ?: text), \song => expect (length song.tracks, 1)))
     namesRefusalJourney ()
+    // Fields the project type no longer declares (the old drive, space, sustains and track reverb) are refused by
+    // name, at the root or on the track that carries them.
+    unknown = \field => "The song project has no field \"${field}\"."
+    forEachList ([{ to = "\"tempo\":120.0,\"drive\":2.0", why = unknown "drive" }, { to = "\"tempo\":120.0,\"space\":{\"size\":1.4}", why = unknown "space" }, { to = "\"tempo\":120.0,\"sustains\":[]", why = unknown "sustains" }], \c =>
+        failsWith (daw::SongFiles::decode (replace text "\"tempo\":120.0" c.to ?: text), c.why))
+    expect (contains text "\"pan\":0.0", true)
+    failsWith (daw::SongFiles::decode (replace text "\"pan\":0.0" "\"pan\":0.0,\"reverb\":0.3" ?: text), "keys: ${unknown "reverb"}")
     encoded ((timeline []), \empty => decoded (empty, \song => expect (length song.tracks, 0))))
 
 // [DAW-PROJECT] A project whose tracks share a name is refused on opening.

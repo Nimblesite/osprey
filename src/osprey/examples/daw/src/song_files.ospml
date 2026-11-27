@@ -73,7 +73,12 @@ module SongFiles
         true => Error(message = "A track’s sends must be a list.")
         false => folded (doc, "sends", routeSend)
 
-    track doc = match instrument (ui::Doc::field (doc, "instrument"))
+    // [DAW-PROJECT] A key the project type does not declare is refused, never silently dropped.
+    declared (doc, fields) = match listGet (filterList (ui::Doc::keys doc, \key => !ui::Lists::any (fields, \field => field == key))) 0
+        Success extra => Error(message = "The song project has no field \"${extra}\".")
+        Error _ => Success(value = doc)
+
+    track doc = match synth::Outcomes::carried (declared (doc, ["name", "instrument", "gain", "pan", "bus", "sends", "positions", "notes"]), \checked => instrument (ui::Doc::field (checked, "instrument")))
         Error why => failed (doc, why)
         Success sound => match folded (doc, "notes", note)
             Error why => failed (doc, why)
@@ -109,7 +114,7 @@ module SongFiles
         play is an error. *)
     export decode source = match jsonDecode source
         Error _ => Error(message = "The song project is not valid JSON.")
-        Success doc => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => synth::Outcomes::carried (folded (doc, "buses", bus), \buses => synth::Outcomes::carried (BusPaths::order buses, \_ => synth::Outcomes::carried (SendRenders::project (arranged (doc, tracks, buses)), \song => playable song))))
+        Success doc => synth::Outcomes::carried (declared (doc, ["title", "tempo", "meterTop", "meterBottom", "sampleRate", "buses", "tracks"]), \_ => synth::Outcomes::carried (folded (doc, "tracks", track), \tracks => synth::Outcomes::carried (folded (doc, "buses", bus), \buses => synth::Outcomes::carried (BusPaths::order buses, \_ => synth::Outcomes::carried (SendRenders::project (arranged (doc, tracks, buses)), \song => playable song)))))
 
     encoded doc = match jsonEncode doc
         Error why => Error(message = "The project could not be written as JSON: ${why}")

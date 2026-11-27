@@ -2,13 +2,6 @@
   "title": "Phosphor Drift",
   "tempo": 97.5,
   "sampleRate": 48000,
-  "drive": 1.3,
-  "space": {"size": 1.4, "decay": 4.2, "damping": 0.45},
-  "intro": {"recording": "~/Documents/Audio/Broken Circuitry.wav", "tail": 1.5, "crossfade": 0.35},
-  "sustains": [
-    {"start": 96, "ratio": 1.3348, "rise": 2.0, "hold": 6.0, "fade": 8.0, "gain": 0.5, "reverb": 0.0},
-    {"start": 152, "ratio": 0.6674, "rise": 1.5, "hold": 3.0, "fade": 6.0, "gain": 0.55, "reverb": 0.0}
-  ],
   "buses": [
     {"name": "Fog", "output": "", "gain": 0.9, "equaliser": {"low": -3.0, "mid": 0.0, "high": 0.8}, "compressor": {"threshold": -22, "ratio": 2.2, "knee": 6, "attack": 0.006, "release": 0.22, "sidechain": "Kick"}},
     {"name": "Pulse", "output": "", "gain": 0.92, "equaliser": {"low": -4.0, "mid": 0.6, "high": 1.2}, "compressor": {"threshold": -18, "ratio": 2.0, "knee": 5, "attack": 0.004, "release": 0.12, "sidechain": "Kick"}},
@@ -31,7 +24,7 @@
           {"identity": 5, "component": "stereoOutput", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 3, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 1}, {"source": 3, "outlet": 0, "destination": 4, "inlet": 0}, {"source": 4, "outlet": 0, "destination": 5, "inlet": 0}],
         "attack": 0.8, "release": 2.5}},
-      "gain": 0.55, "pan": 0, "reverb": 0.35, "bus": "Fog", "sends": [], "positions": [],
+      "gain": 0.55, "pan": 0, "bus": "Fog", "sends": [], "positions": [],
       "notes": [
         {"pitch": 48, "start": 0, "length": 10, "velocity": 0.6}, {"pitch": 53, "start": 6, "length": 10, "velocity": 0.4},
         {"pitch": 61, "start": 104, "length": 8, "velocity": 0.3}, {"pitch": 63, "start": 112, "length": 8, "velocity": 0.3},
@@ -52,7 +45,7 @@
           {"identity": 3, "component": "stereoOutput", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 2, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 1}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 0}],
         "attack": 0.6, "release": 1.8}},
-      "gain": 0.5, "pan": 0, "reverb": 0.4, "bus": "Fog", "sends": [], "positions": [],
+      "gain": 0.5, "pan": 0, "bus": "Fog", "sends": [], "positions": [],
       "notes": [
         {"pitch": 53, "start": 8, "length": 8, "velocity": 0.45}, {"pitch": 54, "start": 16, "length": 8, "velocity": 0.5}, {"pitch": 51, "start": 24, "length": 4, "velocity": 0.5}, {"pitch": 48, "start": 28, "length": 4, "velocity": 0.55},
         {"pitch": 41, "start": 32, "length": 8, "velocity": 0.4}, {"pitch": 42, "start": 40, "length": 8, "velocity": 0.4}, {"pitch": 39, "start": 48, "length": 8, "velocity": 0.4}, {"pitch": 37, "start": 56, "length": 4, "velocity": 0.4}, {"pitch": 36, "start": 60, "length": 4, "velocity": 0.45},
@@ -77,7 +70,7 @@
           {"identity": 1, "component": "stereoOutput", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}],
         "attack": 0.002, "release": 0.03}},
-      "gain": 0.45, "pan": 0, "reverb": 0.2, "bus": "Pulse", "sends": [], "positions": [],
+      "gain": 0.45, "pan": 0, "bus": "Pulse", "sends": [], "positions": [],
       "notes": [
         {"pitch": 60, "start": 6.5, "length": 0.5, "velocity": 0.5}, {"pitch": 60, "start": 14.75, "length": 0.25, "velocity": 0.6}, {"pitch": 60, "start": 22, "length": 1, "velocity": 0.4},
         {"pitch": 60, "start": 29.5, "length": 0.5, "velocity": 0.6}, {"pitch": 60, "start": 30.5, "length": 0.25, "velocity": 0.5}, {"pitch": 60, "start": 31, "length": 1, "velocity": 0.7},
@@ -105,7 +98,7 @@
           {"identity": 4, "component": "output", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 1, "outlet": 0, "destination": 0, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 0, "inlet": 1}, {"source": 0, "outlet": 0, "destination": 3, "inlet": 0}, {"source": 3, "outlet": 0, "destination": 4, "inlet": 0}],
         "attack": 0.9, "release": 1.6}},
-      "gain": 0.2, "pan": -0.1, "reverb": 0.45, "bus": "Fog", "sends": [], "positions": [],
+      "gain": 0.2, "pan": -0.1, "bus": "Fog", "sends": [], "positions": [],
       "notes": [
         {"pitch": 51, "start": 16, "length": 8, "velocity": 0.35}, {"pitch": 54, "start": 16, "length": 8, "velocity": 0.35}, {"pitch": 58, "start": 16, "length": 8, "velocity": 0.35},
         {"pitch": 49, "start": 24, "length": 4, "velocity": 0.35}, {"pitch": 53, "start": 24, "length": 4, "velocity": 0.35}, {"pitch": 56, "start": 24, "length": 4, "velocity": 0.35},
@@ -133,7 +126,7 @@
     {
       "name": "Sub",
       "instrument": {"kind": "OperatorInstrument", "tone": {"breakpoint": 0.5, "feedback": 0.04, "attack": 0.004, "release": 0.12, "bloom": 0.05, "detune": 0}},
-      "gain": 0.62, "pan": 0, "reverb": 0, "bus": "", "sends": [], "positions": [],
+      "gain": 0.62, "pan": 0, "bus": "", "sends": [], "positions": [],
       "notes": [
         {"pitch": 41, "start": 32, "length": 1.5, "velocity": 0.9}, {"pitch": 41, "start": 33.75, "length": 0.25, "velocity": 0.6}, {"pitch": 41, "start": 34.5, "length": 1, "velocity": 0.75}, {"pitch": 53, "start": 35.5, "length": 0.5, "velocity": 0.6},
         {"pitch": 41, "start": 36, "length": 1.5, "velocity": 0.9}, {"pitch": 41, "start": 38.5, "length": 0.5, "velocity": 0.7}, {"pitch": 44, "start": 39, "length": 0.75, "velocity": 0.7},
@@ -181,7 +174,7 @@
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 4, "inlet": 0}, {"source": 3, "outlet": 0, "destination": 4, "inlet": 1},
           {"source": 4, "outlet": 0, "destination": 5, "inlet": 0}, {"source": 4, "outlet": 0, "destination": 6, "inlet": 0}, {"source": 6, "outlet": 0, "destination": 7, "inlet": 0}, {"source": 7, "outlet": 0, "destination": 5, "inlet": 1}, {"source": 5, "outlet": 0, "destination": 8, "inlet": 0}],
         "attack": 0.001, "release": 0.4}},
-      "gain": 0.3, "pan": -0.35, "reverb": 0.25, "bus": "Pulse", "sends": [], "positions": [],
+      "gain": 0.3, "pan": -0.35, "bus": "Pulse", "sends": [], "positions": [],
       "notes": [
         {"pitch": 77, "start": 32.75, "length": 0.25, "velocity": 0.7}, {"pitch": 77, "start": 34.25, "length": 0.25, "velocity": 0.55}, {"pitch": 77, "start": 35.5, "length": 0.25, "velocity": 0.6},
         {"pitch": 77, "start": 36.75, "length": 0.25, "velocity": 0.7}, {"pitch": 77, "start": 37.5, "length": 0.25, "velocity": 0.5}, {"pitch": 77, "start": 39.25, "length": 0.25, "velocity": 0.6},
@@ -227,7 +220,7 @@
           {"source": 4, "outlet": 0, "destination": 6, "inlet": 0}, {"source": 4, "outlet": 1, "destination": 5, "inlet": 0}, {"source": 5, "outlet": 0, "destination": 6, "inlet": 1},
           {"source": 6, "outlet": 0, "destination": 8, "inlet": 0}, {"source": 7, "outlet": 0, "destination": 8, "inlet": 1}, {"source": 8, "outlet": 0, "destination": 9, "inlet": 0}],
         "attack": 0.001, "release": 0.05}},
-      "gain": 0.26, "pan": 0.35, "reverb": 0.3, "bus": "Pulse", "sends": [], "positions": [],
+      "gain": 0.26, "pan": 0.35, "bus": "Pulse", "sends": [], "positions": [],
       "notes": [
         {"pitch": 72, "start": 65.25, "length": 0.25, "velocity": 0.6}, {"pitch": 72, "start": 66.75, "length": 0.25, "velocity": 0.5}, {"pitch": 72, "start": 69.25, "length": 0.25, "velocity": 0.6}, {"pitch": 72, "start": 70.75, "length": 0.25, "velocity": 0.5},
         {"pitch": 72, "start": 73.25, "length": 0.25, "velocity": 0.6}, {"pitch": 72, "start": 74.75, "length": 0.25, "velocity": 0.5}, {"pitch": 72, "start": 77.25, "length": 0.25, "velocity": 0.6}, {"pitch": 72, "start": 78.75, "length": 0.25, "velocity": 0.5},
@@ -254,7 +247,7 @@
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 3, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 1}, {"source": 3, "outlet": 0, "destination": 4, "inlet": 0},
           {"source": 3, "outlet": 0, "destination": 5, "inlet": 0}, {"source": 5, "outlet": 0, "destination": 6, "inlet": 0}, {"source": 6, "outlet": 0, "destination": 4, "inlet": 1}, {"source": 4, "outlet": 0, "destination": 7, "inlet": 0}],
         "attack": 0.001, "release": 0.8}},
-      "gain": 0.22, "pan": 0.2, "reverb": 0.4, "bus": "Pulse", "sends": [], "positions": [],
+      "gain": 0.22, "pan": 0.2, "bus": "Pulse", "sends": [], "positions": [],
       "notes": [
         {"pitch": 72, "start": 64, "length": 0.5, "velocity": 0.6}, {"pitch": 77, "start": 65, "length": 0.5, "velocity": 0.45}, {"pitch": 80, "start": 66, "length": 0.5, "velocity": 0.6}, {"pitch": 77, "start": 67, "length": 0.5, "velocity": 0.45},
         {"pitch": 72, "start": 68, "length": 0.5, "velocity": 0.6}, {"pitch": 75, "start": 69, "length": 0.5, "velocity": 0.45}, {"pitch": 77, "start": 70, "length": 0.5, "velocity": 0.6}, {"pitch": 72, "start": 71, "length": 0.5, "velocity": 0.45},
@@ -278,7 +271,7 @@
     {
       "name": "Bow lead",
       "instrument": {"kind": "BowInstrument", "pressure": 0.55, "brightness": 0.65, "vibrato": 0.01},
-      "gain": 0.34, "pan": 0.05, "reverb": 0.38, "bus": "", "sends": [], "positions": [],
+      "gain": 0.34, "pan": 0.05, "bus": "", "sends": [], "positions": [],
       "notes": [
         {"pitch": 72, "start": 64, "length": 1.5, "velocity": 0.7}, {"pitch": 73, "start": 65.5, "length": 0.5, "velocity": 0.6}, {"pitch": 72, "start": 66, "length": 1, "velocity": 0.65}, {"pitch": 68, "start": 67, "length": 1, "velocity": 0.6},
         {"pitch": 65, "start": 68, "length": 2, "velocity": 0.65}, {"pitch": 68, "start": 70, "length": 1, "velocity": 0.6}, {"pitch": 70, "start": 71, "length": 1, "velocity": 0.62},
@@ -313,7 +306,7 @@
           {"identity": 3, "component": "stereoOutput", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 2, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 1}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 0}],
         "attack": 0.8, "release": 1.5}},
-      "gain": 0.5, "pan": 0, "reverb": 0.45, "bus": "Fog", "sends": [], "positions": [],
+      "gain": 0.5, "pan": 0, "bus": "Fog", "sends": [], "positions": [],
       "notes": [
         {"pitch": 60, "start": 16, "length": 8, "velocity": 0.35},
         {"pitch": 60, "start": 96, "length": 8, "velocity": 0.6}, {"pitch": 60, "start": 104, "length": 8, "velocity": 0.55}, {"pitch": 60, "start": 112, "length": 8, "velocity": 0.6}, {"pitch": 60, "start": 120, "length": 8, "velocity": 0.65},
@@ -335,7 +328,7 @@
           {"identity": 4, "component": "output", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 3, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 1}, {"source": 3, "outlet": 0, "destination": 4, "inlet": 0}],
         "attack": 0.25, "release": 0.9}},
-      "gain": 0.4, "pan": 0.18, "reverb": 0.5, "bus": "Fog", "sends": [], "positions": [],
+      "gain": 0.4, "pan": 0.18, "bus": "Fog", "sends": [], "positions": [],
       "notes": [
         {"pitch": 65, "start": 96, "length": 4, "velocity": 0.5}, {"pitch": 68, "start": 100, "length": 4, "velocity": 0.45},
         {"pitch": 66, "start": 104, "length": 4, "velocity": 0.5}, {"pitch": 70, "start": 108, "length": 4, "velocity": 0.45},
@@ -356,7 +349,7 @@
           {"identity": 2, "component": "output", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 0}],
         "attack": 0.001, "release": 0.05}},
-      "gain": 0.85, "pan": 0, "reverb": 0.02, "bus": "Kit", "sends": [], "positions": [],
+      "gain": 0.85, "pan": 0, "bus": "Kit", "sends": [], "positions": [],
       "notes": [
         {"pitch": 36, "start": 32, "length": 0.5, "velocity": 0.95}, {"pitch": 36, "start": 34.5, "length": 0.5, "velocity": 0.75},
         {"pitch": 36, "start": 36, "length": 0.5, "velocity": 0.95}, {"pitch": 36, "start": 37.75, "length": 0.25, "velocity": 0.55}, {"pitch": 36, "start": 38.5, "length": 0.5, "velocity": 0.75},
@@ -398,7 +391,7 @@
           {"identity": 3, "component": "output", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 0}, {"source": 2, "outlet": 0, "destination": 3, "inlet": 0}],
         "attack": 0.001, "release": 0.05}},
-      "gain": 0.55, "pan": 0.04, "reverb": 0.22, "bus": "Kit", "sends": [], "positions": [],
+      "gain": 0.55, "pan": 0.04, "bus": "Kit", "sends": [], "positions": [],
       "notes": [
         {"pitch": 38, "start": 34, "length": 0.5, "velocity": 0.9}, {"pitch": 38, "start": 38, "length": 0.5, "velocity": 0.9}, {"pitch": 38, "start": 39.75, "length": 0.25, "velocity": 0.3},
         {"pitch": 38, "start": 42, "length": 0.5, "velocity": 0.9}, {"pitch": 38, "start": 46, "length": 0.5, "velocity": 0.9}, {"pitch": 38, "start": 47.75, "length": 0.25, "velocity": 0.3},
@@ -430,7 +423,7 @@
           {"identity": 2, "component": "output", "size": 0, "seed": 1, "asset": "", "settings": []}],
         "cables": [{"source": 0, "outlet": 0, "destination": 1, "inlet": 0}, {"source": 1, "outlet": 0, "destination": 2, "inlet": 0}],
         "attack": 0.001, "release": 0.03}},
-      "gain": 0.3, "pan": 0.22, "reverb": 0.08, "bus": "Kit", "sends": [], "positions": [],
+      "gain": 0.3, "pan": 0.22, "bus": "Kit", "sends": [], "positions": [],
       "notes": [
         {"pitch": 42, "start": 32.5, "length": 0.25, "velocity": 0.5}, {"pitch": 42, "start": 33.5, "length": 0.25, "velocity": 0.35}, {"pitch": 42, "start": 34.5, "length": 0.25, "velocity": 0.5}, {"pitch": 42, "start": 35.5, "length": 0.25, "velocity": 0.35}, {"pitch": 42, "start": 35.75, "length": 0.25, "velocity": 0.25},
         {"pitch": 42, "start": 36.5, "length": 0.25, "velocity": 0.5}, {"pitch": 42, "start": 37.5, "length": 0.25, "velocity": 0.35}, {"pitch": 42, "start": 38.5, "length": 0.25, "velocity": 0.5}, {"pitch": 42, "start": 39.5, "length": 0.25, "velocity": 0.35},
