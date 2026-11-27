@@ -152,6 +152,9 @@ prismIntegratedJourney () =
     expect ((Drive::holding added).paletteDrag, "")
     prismControlJourney quieter
     paletteClickJourney quieter
+    forEachList (synth::EditorState::pickerKinds (), \kind =>
+        added = component (quieter, kind)
+        insertedDescribed (added, Drive::holding added))
     filterSocketJourney ()
     cutoffAudioJourney ()
     menuJourney opened
@@ -168,9 +171,18 @@ paletteClickJourney opened = forEachList (synth::EditorState::kinds, \kind =>
     expect (structuralEquals (addedEditor.graph.cables, (Drive::holding opened).graph.cables), true)
     expect (structuralEquals (filterList (addedEditor.graph.nodes, \n => n.identity < 5), (Drive::holding opened).graph.nodes), true)
     expect (Semantics::offered (added.drivenSeen.renderedAccess, "Canvas input 5:0") || Semantics::offered (added.drivenSeen.renderedAccess, "Canvas output 5:0"), true)
+    insertedDescribed (added, addedEditor)
     match kind == "mixer"
         true => overlappingModuleJourney added
         false => expect (true, true))
+
+// [SYNTH-ADVANCED-PRISM] An inserted module's defaults sit inside their declared ranges, and its inspector's first
+// page offers one dial per descriptor parameter, carrying that parameter's value and range.
+insertedDescribed (added, editor) = valid (synth::Graphs::node (editor.graph, 5), \n =>
+    forEachList (n.parameters, \p => expect ("${p.key} ${p.minimum <= p.initial && p.initial <= p.maximum}", "${p.key} true"))
+    forEachList (ui::Lists::slice (n.parameters, 0, 10), \p =>
+        dial = Semantics::element (added.drivenSeen.renderedAccess, "${synth::EditorView::componentName (editor, n)} ${(synth::ParameterModes::describe p).title}")
+        expect ("${p.key} ${dial.accessValue} ${dial.accessMin} ${dial.accessMax}", "${p.key} ${p.initial} ${p.minimum} ${p.maximum}")))
 
 overlappingModuleJourney added =
     at = controlPoint (added, "Canvas Mixer 5", 0.5)
