@@ -291,6 +291,22 @@ fn request_carries_module_flavor_and_marker_and_protocol_version() {
 }
 
 #[test]
+fn a_request_hands_the_checker_plain_drive_paths_not_verbatim_ones() {
+    // [TYPES-DISCIPLINE-PROTOCOL] A canonical Windows root is `\\?\C:\…`, where `/` is never a
+    // separator: a checker that appended `/erased-…` to that cache_dir could not write the file.
+    let config = ProjectConfig::for_root(Path::new(r"\\?\C:\proj"));
+    let module = source_at(r"\\?\C:\proj\src\access.ospml", MARKED);
+    let request = Request::new(&module, &config, Vec::new());
+    let line = request.to_line().expect("json");
+    let parsed: serde_json::Value = serde_json::from_str(&line).expect("round trip");
+    assert_eq!(parsed["module"]["path"], r"C:\proj\src\access.ospml");
+    assert_eq!(parsed["options"]["project_root"], r"C:\proj");
+    let cache = parsed["options"]["cache_dir"].as_str().unwrap_or_default();
+    assert!(cache.starts_with(r"C:\proj") && cache.ends_with("disciplines"), "{cache}");
+    assert!(!line.contains(r"\\\\?\\"), "{line}");
+}
+
+#[test]
 fn a_cached_result_is_keyed_by_the_request_and_the_checker_binary() {
     // Implements [TYPES-DISCIPLINE-PROTOCOL]: "results are cached by the hash
     // of the request and the checker binary".

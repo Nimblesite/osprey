@@ -40,7 +40,9 @@ module Signature
         true => substring (path, start, length path) ?: "module"
         false => stepped (path, index, start, Chars::at (path, index))
 
-    stepped (path, index, start, char) = match char == "/"
+    // A Windows request path separates with `\`; without it the whole `C:\...` path,
+    // colon included, became the erased file's name and writeFile refused it.
+    stepped (path, index, start, char) = match char == "/" || char == "\\"
         true => afterLast (path, index + 1, index + 1)
         false => afterLast (path, index + 1, start)
 

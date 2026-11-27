@@ -50,7 +50,7 @@ fn save(
     }
     let path = directory.join(name);
     std::fs::write(&path, text).map_err(|error| failure(&path, &error))?;
-    path.canonicalize()
+    osprey_project::paths::canonical(&path)
         .map(Some)
         .map_err(|error| failure(&path, &error))
 }

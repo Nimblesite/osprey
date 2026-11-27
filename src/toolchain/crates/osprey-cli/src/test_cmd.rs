@@ -260,7 +260,7 @@ fn run_suite(
     opts: &Opts,
     dump: Option<&Path>,
 ) -> std::io::Result<std::process::Output> {
-    let source = std::fs::canonicalize(file)?;
+    let source = osprey_project::paths::canonical(file)?;
     let scratch = source
         .is_file()
         .then(|| crate::toolchain::Scratch::new(&source.to_string_lossy(), "test-suite"))

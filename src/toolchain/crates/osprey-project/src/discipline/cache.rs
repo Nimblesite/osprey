@@ -99,7 +99,7 @@ pub(super) fn digest(bytes: &[u8]) -> u64 {
 }
 
 fn entry_path(config: &ProjectConfig, discipline: &Discipline, line: &str, binary: u64) -> PathBuf {
-    let dir = config.directory.join(".osprey/cache/disciplines");
+    let dir = crate::paths::discipline_cache(&config.directory);
     let mut hasher = DefaultHasher::new();
     line.hash(&mut hasher);
     binary.hash(&mut hasher);

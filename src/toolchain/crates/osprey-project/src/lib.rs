@@ -16,6 +16,7 @@ mod constructor_resolve;
 mod contract;
 mod contribution;
 pub mod discipline;
+pub mod paths;
 mod field_resolve;
 mod imports;
 mod manifest;
@@ -291,7 +292,7 @@ fn erase_disciplines(
 ) -> Result<Vec<SourceFile>, Vec<ProjectError>> {
     let runner = discipline::ProcessRunner::new(
         compiler_binary(),
-        config.directory.join(".osprey/cache/disciplines/build"),
+        paths::discipline_cache(&config.directory).join("build"),
     );
     discipline::apply(config, sources, &runner)
 }
@@ -314,19 +315,8 @@ pub fn discover(root: &Path) -> Result<(ProjectConfig, Vec<PathBuf>), Vec<Projec
     let manifest_path = root.join("osprey.toml");
     let mut config = load_config(root, &manifest_path)?;
     workspace::adopt(root, &mut config);
-    let paths = source::discover(&written(root), &config).map_err(|error| vec![error])?;
-    Ok((config, paths))
-}
-
-/// `root` without the verbatim prefix a Windows canonical drive path carries (`\\?\C:\…`). Under
-/// that prefix a joined source root such as `../lib` resolves its `..`, so the sources would sort
-/// by their resolved folders on Windows alone and the program would be assembled in another order
-/// than on every other OS. Any other root is returned as it is.
-fn written(root: &Path) -> PathBuf {
-    root.to_str()
-        .and_then(|text| text.strip_prefix(r"\\?\"))
-        .filter(|drive| drive.as_bytes().get(1) == Some(&b':'))
-        .map_or_else(|| root.to_path_buf(), PathBuf::from)
+    let found = source::discover(&paths::plain(root), &config).map_err(|error| vec![error])?;
+    Ok((config, found))
 }
 
 /// Assemble already-loaded sources into one resolved canonical program.

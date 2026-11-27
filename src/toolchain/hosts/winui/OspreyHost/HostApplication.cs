@@ -51,6 +51,7 @@ sealed partial class HostApplication(Launch launch) : Application, IXamlMetadata
             Environment.ExitCode = 1;
         }
         Progress.Note($"self-test finished, exit code {Environment.ExitCode}");
+        window?.End();
         Exit();
     }
 
