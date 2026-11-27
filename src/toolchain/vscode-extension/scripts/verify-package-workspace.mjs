@@ -29,6 +29,7 @@ async function verify(artifact) {
 }
 
 const supplied = process.argv.slice(2);
-for (const artifact of supplied.length ? supplied : ["package-workspace.wasm", "workbench.wasm"].map(file => path.join(bundle, file))) {
+// The package workspace is not shipped [REPO-SPLIT]; its CI test fixture is passed by path.
+for (const artifact of supplied.length ? supplied : [path.join(bundle, "workbench.wasm")]) {
   await verify(artifact);
 }

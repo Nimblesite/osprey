@@ -87,7 +87,7 @@ test: build _build_c_runtime_tests
 	$(MAKE) _test_ownership_proof
 	$(MAKE) _test_disciplines
 	$(MAKE) _test_profiler
-	$(MAKE) _vsix_bundle
+	$(MAKE) _vsix_bundle_packages
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _test_zed_stdio
 	$(MAKE) _coverage_check_vscode_extension

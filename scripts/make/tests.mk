@@ -449,7 +449,7 @@ _test_profiler:
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
 # CI consumes the exact stage-1 bundle; public `make test` builds it first.
-_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
+_test_vscode_extension: _vsix_package_design _vsix_verify $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey$(EXE)

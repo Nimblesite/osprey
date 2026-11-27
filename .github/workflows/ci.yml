@@ -163,13 +163,15 @@ jobs:
           node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
             --argument http://127.0.0.1:18790
 
+      # The extension's CI tests drive its package features against the laid package manager's
+      # main; the shipped VSIX bundles none of it [REPO-SPLIT].
       - name: Lay the package manager (Nimblesite/osprey-packages)
         uses: ./.github/actions/downstream
         with:
           name: osprey-packages
 
-      - name: Build the extension bundle
-        run: make _vsix_bundle
+      - name: Build the extension bundle and its package test fixtures
+        run: make _vsix_bundle_packages
 
       - name: Build the Zed WASM extension
         run: |
@@ -965,6 +967,11 @@ jobs:
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey target/osprey-pkg target/osprey-registry src/toolchain/vscode-extension/bin/linux-x64/osprey src/toolchain/vscode-extension/bin/linux-x64/osprey-pkg src/toolchain/vscode-extension/bin/linux-x64/osprey-registry
 
+      # The package features are tested against the laid package manager's main [REPO-SPLIT].
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension
 

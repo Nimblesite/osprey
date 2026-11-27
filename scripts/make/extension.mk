@@ -56,10 +56,11 @@ _vsix_clean:
 # time version check either shipped a stale manifest or silently skipped. Local
 # builds report 0.0.0-dev, exactly what the committed manifest expects, so the
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
-# The editor ships a compiled Osprey package client; installations never compile
-# package-manager application sources on the user's machine. [PACKAGE-API]
-# The package manager lives in Nimblesite/osprey-packages; `make downstream` lays it at
-# src/osprey/packages/manager at the commit scripts/ci/downstream.json pins. [REPO-SPLIT]
+# The package manager is Nimblesite/osprey-packages' to build and ship [REPO-SPLIT]: the VSIX
+# bundles no client, registry server or package workspace, and the extension reads them from
+# osprey.packages.frontendPath, osprey.packages.appPath and osprey.packages.localRegistry.serverPath.
+# The targets below build them from `make downstream`'s laid main for the extension's CI tests only,
+# which `_vsix_bundle_packages` stages beside the bundled compiler.
 REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \) 2>/dev/null)
 .PHONY: _downstream_packages
 _downstream_packages:
@@ -102,13 +103,9 @@ target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-regi
 	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
-_vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-workspace.wasm target/osprey-registry target/workbench.wasm
+_vsix_bundle: target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey$(EXE)"; \
-	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \
-	cp target/osprey-registry "$$DEST/osprey-registry$(EXE)"; \
-	rm -rf "$$DEST/registry"; \
-	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp target/workbench.wasm "$$DEST/workbench.wasm"; \
 	$(RM) "$$DEST/workbench"; $(MKDIR) "$$DEST/workbench"; \
 	cp -R src/osprey/workbench/lessons "$$DEST/workbench/"; \
@@ -119,6 +116,22 @@ _vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-works
 	cp .github/shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
+# The package panel's stylesheet and mark, from the laid registry's design tokens. CI tests only.
+.PHONY: _vsix_package_design
+_vsix_package_design:
+	cd $(EXT_DIR) && node scripts/sync-package-design.mjs
+
+# The extension's CI tests drive the package features against the laid package manager: its
+# client, registry server and package workspace go beside the bundled compiler. CI tests only.
+.PHONY: _vsix_bundle_packages
+_vsix_bundle_packages: _vsix_bundle _vsix_package_design target/osprey-pkg target/local-registry.stamp target/package-workspace.wasm target/osprey-registry
+	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; \
+	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \
+	cp target/osprey-registry "$$DEST/osprey-registry$(EXE)"; \
+	rm -rf "$$DEST/registry"; \
+	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
+	echo "  staged the laid package manager's client, registry server and workspace -> $$DEST/"
+
 # Refuse missing or stale build artifacts before running the full editor suite.
 # Test jobs have no WASI toolchain and must not compile a second package client.
 .PHONY: _vsix_verify
@@ -127,13 +140,13 @@ _vsix_verify:
 	@set -e; for INPUT in "$(BIN):osprey$(EXE)" "target/osprey-pkg:osprey-pkg$(EXE)" "target/osprey-registry:osprey-registry$(EXE)" "target/package-workspace.wasm:package-workspace.wasm" "target/workbench.wasm:workbench.wasm" \
 	    $(foreach ARCHIVE,$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)),"$(ARCHIVE):$(notdir $(ARCHIVE))"); do \
 	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
-	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \
+	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle_packages"; exit 1; }; \
 	done
 	diff -qr src/osprey/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
 	diff -qr -x lessons -x osprey-logo.png -x proof-libraries src/osprey/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
 	scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
 	cmp src/toolchain/website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
-	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
+	cd $(EXT_DIR) && node scripts/verify-package-client.mjs --packages
 
 # Package, then prove the VSIX carries the bundled compiler: `vsce` ships
 # whatever `.vscodeignore` leaves behind and reports success either way, so a
