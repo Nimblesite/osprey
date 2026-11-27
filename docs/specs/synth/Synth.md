@@ -380,7 +380,7 @@ The literature behind the three modes of `SpectralMorph { amount mode }` ([SYNTH
 
 Three modes on `SpectralMorph { amount mode }` (81552760a), all inside the existing STFT node, with formulas in `spectral_math.ospml`. Every mode keeps one contract: amount 0 is the main input and 1 is the side.
 
-**Blend** (`logBlend`). Per bin, magnitude is `exp ((1 − t) ln (a + ε) + t ln (b + ε)) − ε` with ε = 10⁻⁹, the geometric path. Phase comes from the dominant input. Partials stay at their own frequencies, so this is a morph in timbre, not pitch. A sine at 0.5 blended with one at 0.05 measures 0.158 halfway (a crossfade would give 0.275), and 0.281 and 0.089 at the quarters, all within 5%.
+**Blend** (`logBlend`). Per bin, magnitude is `exp ((1 − t) ln (a + ε) + t ln (b + ε)) − ε` with ε = 10⁻⁹, the geometric path. Phase comes from the main input up to amount 0.4 and the side input from 0.6, and between them it turns along the shorter arc, weighted by the two levels so a silent bin never donates its phase (`donorWeight`, `arcPhase`). Partials stay at their own frequencies, so this is a morph in timbre, not pitch. A sine at 0.5 blended with one at 0.05 measures 0.158 halfway (a crossfade would give 0.275), and 0.281 and 0.089 at the quarters, all within 5%.
 
 **Envelope** (`envelopeMorph`). Cross-synthesis keeps the main input's harmonics and phase, and rescales each bin by `(E_side / E_main) ^ t`. Both envelopes use the formant shifter's peak envelope (about 150 Hz), the gain is capped at 16, and a silent own-envelope gives a gain of 1. Unlike the cross-synthesis row above, which makes the side input the carrier, the main input stays the carrier, so 0 is the main input as in every other mode. A vowel with a 1 kHz resonance takes on the side input's 1.875 kHz resonance at amount 1, with no energy between its harmonics.
 
@@ -395,7 +395,7 @@ The acceptance test renders at 48 kHz, size 4,096 and hop 1,024, and measures fr
 | Test | Acceptance |
 | --- | --- |
 | Steadiness: amount held at 0.5 on 220 Hz and 330 Hz six-harmonic tones in every mode, and on a 500 Hz sine against one 20 dB quieter in Blend | every hop's rms within 0.5 dB of the mean |
-| Automation: amount ramps 0 → 1 over 0.5 s, in Blend and Partial with a 20 dB level step, and in Envelope on the harmonic tones | no hop-to-hop step more than 2 dB from the ramp's mean step; the total change within 1 dB of the level step |
+| Automation: amount ramps 0 → 1 over 0.5 s, in Blend and Partial with a 20 dB level step, in Envelope on the harmonic tones, and in Blend on a 500 Hz sine against itself 90° and 160° out of phase | no hop-to-hop step more than 2 dB from the ramp's mean step; the total change within 1 dB of the level step |
 | Partial orphans: 220 Hz against 277 Hz at amount 0.25, with six main and three side harmonics, then three main and six side | the three pairs at k × the geometric glide within 20%; each unmatched harmonic at 0.75 (main) or 0.25 (side) of its level within 1 dB |
 
 ### Failure modes
@@ -404,8 +404,8 @@ The acceptance test renders at 48 kHz, size 4,096 and hop 1,024, and measures fr
 - **Envelope radius bias** (Envelope): fundamentals above ≈150 Hz, or partials spaced wider than the radius, collapse the peak envelope onto the partial peaks, and Envelope mode degenerates toward Blend. Cepstral or true-envelope smoothing (Oppenheim 1969; Röbel 2005) is the upgrade at FFT cost.
 - **Match churn** (Partial): inharmonic or noisy spectra give different order-based pairings each frame → warble. No cross-frame tracking in v1; MQ-style tracking is the literature fix. Peak-count and magnitude thresholds bound the damage.
 - **Transients and noise** (Partial): matched peaks cannot represent attacks or breathiness (the SMS residual; Verma and Meng), so percussive material smears over the window; Blend is the fallback mode.
-- **Mid-amount phase incoherence** (Blend): bins inherited from the non-dominant input carry the dominant's phase, so partial cancellation can occur; identity locking mitigates it within one peak, not across inputs.
-- **The 0.5 phase-donor switch** (Blend): the dominant-input rule flips at amount 0.5, a phase seam when sweeping through. Envelope avoids it (main phase throughout). Crossfading donors near 0.5 is the open refinement.
+- **Mid-amount phase incoherence** (Blend): bins inherited from one input carry a phase turned toward the other's, so partial cancellation can occur; identity locking mitigates it within one peak, not across inputs.
+- **Exact antiphase** (Blend): a bin whose two inputs are exactly π apart has no shorter arc, so its turn can flip direction between frames and a sweep dips there (4 dB on a sine against its own inverse). Any other offset turns smoothly: the hard switch at 0.5 it replaced dipped 2.4 dB at 90° and 8 dB at 180°, and the crossfade keeps 90° and 160° within 0.6 dB.
 - **Overlap-add inconsistency under fast automation** (all modes): frame-to-frame changes make the modified STFT inconsistent (Griffin and Lim 1984); bound amount sweeps to ≲ one per window.
 
 ### References

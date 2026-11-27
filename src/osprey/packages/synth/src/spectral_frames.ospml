@@ -78,13 +78,13 @@ module SpectralFrames
         levels = Sequences::combined (bins, memory, \(value, held) => Interpolation::linear (magnitude value, held.re, amount))
         SpectralFrame(bins = Sequences::combined (bins, levels, \(value, level) => withMagnitude (value, level)), memory = mapList (levels, \level => Complex(re = level, im = 0.0)), motion = motion, captured = false)
 
-    // [SYNTH-SPECTRAL-MORPH] Blend interpolates log magnitudes; phase comes from the dominant input
-    // (below 0.5 the main input).
+    // [SYNTH-SPECTRAL-MORPH] Blend interpolates log magnitudes; phase comes from the main input below 0.4 and the
+    // side from 0.6, and turns along the shorter arc between them, so a sweep through 0.5 leaves no seam.
     morphBin (main, side, amount) =
         level = SpectralMath::logBlend (magnitude main, magnitude side, amount)
-        match amount < 0.5
-            true => withMagnitude (main, level)
-            false => withMagnitude (side, level)
+        weight = SpectralMath::donorWeight (magnitude main, magnitude side, amount)
+        phase = SpectralMath::arcPhase (SpectralMath::angle (main.re, main.im), SpectralMath::angle (side.re, side.im), weight)
+        Complex(re = level * cos phase, im = level * sin phase)
 
     levels bins = mapList (bins, \value => Complex(re = magnitude value, im = 0.0))
 

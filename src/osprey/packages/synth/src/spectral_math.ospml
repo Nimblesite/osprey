@@ -251,6 +251,38 @@ module SpectralMath
     *)
     export logBlend (a, b, amount) = exp ((1.0 - amount) * ln (a + 0.000000001) + amount * ln (b + 0.000000001)) - 0.000000001
 
+    (** Blend's phase-donor weight on the side input ([SYNTH-SPECTRAL-MORPH]): 0 to amount 0.4, 1 from 0.6 and
+    linear between, scaled by the two levels so a silent input never donates its phase.
+    # Examples
+    ```osprey
+    print "${SpectralMath::donorWeight (1.0, 1.0, 0.3)} ${SpectralMath::donorWeight (1.0, 1.0, 0.5)} ${SpectralMath::donorWeight (1.0, 0.0, 0.7)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
+    export donorWeight (main, side, amount) =
+        crossed = match amount <= 0.4
+            true => 0.0
+            false => match amount >= 0.6
+                true => 1.0
+                false => (amount - 0.4) / 0.2
+        weighted = crossed * side
+        match weighted + (1.0 - crossed) * main <= 0.000000001
+            true => crossed
+            false => floatDiv (weighted, weighted + (1.0 - crossed) * main)
+
+    (** The phase `weight` of the way from `from` to `to` along the shorter arc.
+    # Examples
+    ```osprey
+    print "${SpectralMath::arcPhase (0.0, 3.0, 0.5)} ${SpectralMath::arcPhase (3.0, -3.0, 0.5)}"
+    ```
+    ```output
+    @@TODO@@
+    ```
+    *)
+    export arcPhase (from, to, weight) = from + weight * principal (to - from)
+
     (** Cross-synthesis gain `(wanted / own) ^ amount`, 1 where the own envelope is silent, at most 16.
     # Examples
     ```osprey

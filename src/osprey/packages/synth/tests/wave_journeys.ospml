@@ -481,6 +481,9 @@ registerWaveJourneys () =
         rampSmooth (synth::Blend, { main = \n => wideTone (500.0, 0.5, n), side = \n => wideTone (500.0, 0.05, n) }, -20.0)
         rampSmooth (synth::Partial, { main = \n => wideTone (220.0, 0.5, n), side = \n => wideTone (330.0, 0.05, n) }, -20.0)
         rampSmooth (synth::Envelope, harmonics, 0.0)
+        // Blend's phase donor turns between 0.4 and 0.6, so sweeping a sine against itself 90° or 160° out of
+        // phase has no seam at 0.5 (the hard switch it replaced dipped 2.4 dB at 90° and 8 dB at 180°).
+        forEachList ([90.0, 160.0], \degrees => rampSmooth (synth::Blend, { main = \n => wideTone (500.0, 0.5, n), side = \n => 0.5 * sin (tau * 500.0 * toFloat n / morphRate + degrees * tau / 360.0) }, 0.0))
         orphansHeld (6, 3, 0.75, 220.0)
         orphansHeld (3, 6, 0.25, 277.0)))
     test ("sample, impulse and table resources carry a content identity: name, 64-bit hash, channels, rate, frames and version, and a changed or renamed resource is refused [SYNTH-ADVANCED-CORE-RESOURCES]", \() => arithmetic identityJourney)
