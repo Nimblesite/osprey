@@ -92,3 +92,47 @@ socketGraphJourney () =
     expect (mapList ((Drive::holding gone).graph.nodes, \n => n.identity), [0, 1, 2, 3, 5, 6])
     cablesOf (gone, 2)
     forEachList (["Cable 0:0 to 2:0", "Cable 1:0 to 3:0"], \label => offeredIn (gone, label, true))
+
+// [PRISM-PATCH-LAYOUT] A patch with no saved positions is laid out along its signal flow: sources on the left,
+// the Output on the right, one column per step, branches stacked, no card over another or over a saved card,
+// and no cable through a card (sampled along the straight line between the two sockets).
+flowRoute (s, d, i) = synth::Components::route (s, 0, d, i)
+
+flowNodes () = [synth::Components::sine (1, 220.0), synth::Components::gain (2, 0.5), synth::Components::gain (3, 0.5), synth::Components::mixer 4, synth::Components::output 5]
+
+// A fan-out that merges, a skip cable over a two-card chain, and a skip over one card into the Output's mixer.
+flowGraphs () = [[flowRoute (1, 2, 0), flowRoute (1, 3, 0), flowRoute (2, 4, 0), flowRoute (3, 4, 1), flowRoute (4, 5, 0)], [flowRoute (1, 2, 0), flowRoute (2, 3, 0), flowRoute (3, 4, 0), flowRoute (1, 4, 1), flowRoute (4, 5, 0)], [flowRoute (1, 2, 0), flowRoute (2, 4, 0), flowRoute (1, 3, 0), flowRoute (3, 4, 1), flowRoute (2, 5, 0)]]
+
+flowAt (placed, id) = ui::Lists::find (placed, \p => p.layoutNode == id) ?: daw::NodePosition(layoutNode = id, layoutX = -9999.0, layoutY = -9999.0)
+
+within (value, centre, half) = value > centre - half && value < centre + half
+
+overCard (placed, c, x, y) = ui::Lists::any (placed, \p => p.layoutNode != c.source && p.layoutNode != c.destination && within (x, p.layoutX, 146.0) && within (y, p.layoutY, 90.0))
+
+cablePoint (placed, c, i) =
+    head = flowAt (placed, c.source)
+    tail = flowAt (placed, c.destination)
+    share = toFloat i / 32.0
+    overCard (placed, c, head.layoutX + 146.0 + (tail.layoutX - head.layoutX - 292.0) * share, head.layoutY + (tail.layoutY - head.layoutY) * share)
+
+throughCard (placed, c) = ui::Lists::any (toList (range (1, 32)), \i => cablePoint (placed, c, i))
+
+apart (one, other) = one.layoutNode == other.layoutNode || synth::CanvasGeometry::collides (one.layoutX, one.layoutY, other.layoutX, other.layoutY) == false
+
+flowChecked (graph, placed, saved) =
+    expect (length placed, length graph.nodes)
+    forEachList (placed, \p => forEachList (listConcat placed saved, \q => expect (apart (p, q), true)))
+    forEachList (graph.cables, \c =>
+        expect ((flowAt (placed, c.destination)).layoutX > (flowAt (placed, c.source)).layoutX, true)
+        expect (throughCard (placed, c), false))
+    expect ((flowAt (placed, 1)).layoutX, 350.0)
+    expect (ui::Lists::any (placed, \p => p.layoutX > (flowAt (placed, 5)).layoutX), false)
+
+flowPlanned graph = match synth::Graphs::prepare graph
+    synth::Invalid _ => expect (false, true)
+    synth::Valid plan =>
+        flowChecked (graph, synth::EditorLayout::flow (plan, []), [])
+        saved = [daw::NodePosition(layoutNode = 9, layoutX = 350.0, layoutY = 170.0), daw::NodePosition(layoutNode = 8, layoutX = 690.0, layoutY = 405.0)]
+        flowChecked (graph, synth::EditorLayout::flow (plan, saved), saved)
+
+flowLayoutJourney () = forEachList (flowGraphs (), \routes => valid (synth::Patches::built (flowNodes (), routes), flowPlanned))

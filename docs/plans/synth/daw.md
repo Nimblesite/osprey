@@ -73,7 +73,7 @@ Four host-free journeys failed independently ([screenshots and review](../../des
 
 ## Patch layout [PRISM-PATCH-LAYOUT]
 
-- [ ] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another and no cable through a card [PRISM-PATCH-LAYOUT].
+- [x] A patch with no saved positions is laid out along its signal flow: sources on the left, the Output on the right, one column per step, branches stacked, no card over another or over a saved card and no cable through a card; a card fed over more than one column takes its source's row, kept clear (`flowLayoutJourney`: fan-out and merge, two skip shapes, with and without saved cards) [PRISM-PATCH-LAYOUT].
 - [ ] Cards keep their designed size in a patch opened from a track [PRISM-PATCH-LAYOUT].
 - [ ] The routing page uses the real patch nodes and cables, not its own drawn cards [PRISM-ROUTING-EDITOR].
 - [ ] The Grain cloud sample path stays inside its card: the filename in the waveform panel, truncated to its width, the full path in the inspector or an accessible description; verified in a narrow window with a long filename and the output socket clear [PRISM-PATCH-LAYOUT-SAMPLE-LABEL].

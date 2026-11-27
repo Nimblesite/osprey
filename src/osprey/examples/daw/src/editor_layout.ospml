@@ -3,25 +3,42 @@ namespace synth
 
 (** Stable component positions and pointer capture for the modular canvas. *)
 module EditorLayout
-    availableRow (saved, x, row) = match ui::Lists::any (saved, \p => CanvasGeometry::collides (x, CanvasGeometry::gridY (toFloat row), p.layoutX, p.layoutY))
-        true => availableRow (saved, x, satAdd row 1)
+    // A row is crossed at `depth` when a card already placed in it feeds a card beyond `depth`: that cable runs through.
+    crossed (plan, depths, held, depth, row) = ui::Lists::any (plan.graph.cables, \c =>
+        (mapGet held.rowOf (toString c.source) ?: -1) == row && (mapGet depths (toString c.source) ?: depth) < depth && (mapGet depths (toString c.destination) ?: depth) > depth)
+
+    taken (plan, depths, held, saved, x, depth, row) = crossed (plan, depths, held, depth, row) || mapContains held.used "${depth}:${row}" || ui::Lists::any (saved, \p => CanvasGeometry::collides (x, CanvasGeometry::gridY (toFloat row), p.layoutX, p.layoutY))
+
+    availableRow (plan, depths, held, saved, x, depth, row) = match taken (plan, depths, held, saved, x, depth, row)
+        true => availableRow (plan, depths, held, saved, x, depth, satAdd row 1)
         false => row
 
-    place (inputs, saved, held, id) =
-        parents = mapGet inputs (toString id) ?: []
-        depth = foldList (parents, 0, \(largest, parent) =>
-            next = satAdd (mapGet held.depths (toString parent) ?: -1) 1
-            ui::Pick::either (next > largest, next, largest))
-        key = toString depth
-        x = CanvasGeometry::signalX (toFloat depth)
-        row = availableRow (saved, x, mapGet held.rows key ?: 0)
-        at = daw::NodePosition(layoutNode = id, layoutX = x, layoutY = CanvasGeometry::gridY (toFloat row))
-        { depths = mapSet held.depths (toString id) depth, rows = mapSet held.rows key (satAdd row 1), placed = listPrepend held.placed at }
+    // A card fed over more than one column starts in its source's row, kept clear, so that cable runs straight.
+    sourceRow (depths, held, depth, id, row, c) = match c.destination == id && (mapGet depths (toString c.source) ?: depth) < depth - 1
+        true => mapGet held.rowOf (toString c.source) ?: row
+        false => row
 
-    (** Compute default positions once on open, in the graph scheduler's dependency order. *)
+    preferred (plan, depths, held, depth, id) = foldList (plan.graph.cables, 0, \(row, c) => sourceRow (depths, held, depth, id, row, c))
+
+    // One column past the deepest input.
+    deeper (depths, largest, parent) =
+        next = satAdd (mapGet depths (toString parent) ?: -1) 1
+        ui::Pick::either (next > largest, next, largest)
+
+    columns (plan, inputs) = foldList (plan.order, Map(), \(depths, id) => mapSet depths (toString id) (foldList (mapGet inputs (toString id) ?: [], 0, \(largest, parent) => deeper (depths, largest, parent))))
+
+    place (plan, depths, saved, held, id) =
+        depth = mapGet depths (toString id) ?: 0
+        x = CanvasGeometry::signalX (toFloat depth)
+        row = availableRow (plan, depths, held, saved, x, depth, preferred (plan, depths, held, depth, id))
+        at = daw::NodePosition(layoutNode = id, layoutX = x, layoutY = CanvasGeometry::gridY (toFloat row))
+        { rowOf = mapSet held.rowOf (toString id) row, used = mapSet held.used "${depth}:${row}" true, placed = listPrepend held.placed at }
+
+    (** Compute default positions once on open, in the graph scheduler's dependency order: one column per step,
+        branches stacked, clear of saved cards, and no card in the row of a cable that passes over its column. *)
     export flow (plan, saved) =
-        inputs = Graphs::inputSources plan.graph.cables
-        (foldList (plan.order, { depths = Map(), rows = Map(), placed = [] }, \(held, id) => place (inputs, saved, held, id))).placed
+        depths = columns (plan, Graphs::inputSources plan.graph.cables)
+        (foldList (plan.order, { rowOf = Map(), used = Map(), placed = [] }, \(held, id) => place (plan, depths, saved, held, id))).placed
 
     stored (editor, identity) = match ui::Lists::find (editor.positions, \p => p.layoutNode == identity)
         Success at => at
