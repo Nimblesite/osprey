@@ -53,7 +53,7 @@ module Fixture {
     /// run reads it back, falling back to the fixture's own `reads`.
     export fn readAfter(written, reads, path) = readFor(listConcat(written, reads), path)
 
-    fn pathsUnder(written, dir) = mapList(filterList(written, fn(r: ReadRoute) => startsWith(r.path, "${dir}/")),
+    fn pathsUnder(written, dir) = mapList(filterList(written, fn(r) => startsWith(r.path, "${dir}/")),
         fn(r: ReadRoute) => drop(r.path, byteLength(dir) + 1))
 
     fn joinedPaths(before, after) = listSort(foldList(after, before, fn(paths, path) =>

@@ -12,6 +12,8 @@ import registry_cli::Reports
 /// files and tree fixtures record everything the command would write.
 /// Implements [PACKAGE-FOLDER-REGISTRY] client tests (plan 0020, Phase F3).
 module FetchTests {
+    let bundleDigestMismatch = "bundle.digest-mismatch"
+
     let localBase = "http://127.0.0.1:8787"
     let altBase = "http://10.1.2.3:9999"
     let packagesPath = "/v1/packages/finch/ledger"
@@ -243,7 +245,7 @@ module FetchTests {
         let routes = [route(localBase, sourcePathOf(r21), 200, tamperedBundle(r21))]
         let a = attempt(routes, [digestOf(r21)])
         checkAll("a tampered bundle is bundle.digest-mismatch and writes nothing", [
-            failedOne(a, "bundle.digest-mismatch"),
+            failedOne(a, bundleDigestMismatch),
             structuralEquals([a.writes, a.ensures], ["", ""])
         ])
     }
@@ -308,7 +310,7 @@ module FetchTests {
         checkAll("fetch preserves legal files and rejects altered attribution", [
             a.report.status == 0,
             foldList(legal, true, fn(ok, f) => ok && (indexOf(a.writes, "/${f.relPath}=${f.content}|") ?: -1) >= 0),
-            failedOne(bad, "bundle.digest-mismatch"),
+            failedOne(bad, bundleDigestMismatch),
             bad.writes == "" && bad.ensures == ""
         ])
     }
@@ -344,7 +346,7 @@ module FetchTests {
         let unsafeRoot = offline(outside, Bundle::encode(outside) ?: "")
         checkAll("offline bundle verifies source and manifest before writing", [
             good.report.status == 0 && contains(good.writes, "src/main.osp="),
-            failedOne(bad, "bundle.digest-mismatch") && bad.ensures == "" && bad.writes == "",
+            failedOne(bad, bundleDigestMismatch) && bad.ensures == "" && bad.writes == "",
             unsafeRoot.report.status == 1 && unsafeRoot.writes == "" && unsafeRoot.ensures == ""
         ])
     }

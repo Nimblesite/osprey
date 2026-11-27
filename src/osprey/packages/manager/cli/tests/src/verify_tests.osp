@@ -40,9 +40,9 @@ module VerifyTests {
 
     fn installDir() = Fetch::installDir(pkg().id)
 
-    fn readsForPkg() = mapList(pkg().files, fn(f: Release::File) => Fixture::readRoute("${installDir()}/${f.relPath}", f.content))
+    fn readsForPkg() = mapList(pkg().files, fn(f) => Fixture::readRoute("${installDir()}/${f.relPath}", f.content))
 
-    fn walkForPkg() = Fixture::walkRoute(installDir(), mapList(pkg().files, fn(f: Release::File) => f.relPath))
+    fn walkForPkg() = Fixture::walkRoute(installDir(), mapList(pkg().files, fn(f) => f.relPath))
 
     fn lockRead(text) = Fixture::readRoute("osprey.lock", text)
     fn manifestRead() = Fixture::readRoute("osprey.toml", manifestText())
@@ -91,7 +91,7 @@ module VerifyTests {
 
     /// An installed tree whose digest differs from its release.
     fn digestMismatch() = {
-        let tampered = mapList(pkg().files, fn(f: Release::File) => Fixture::readRoute("${installDir()}/${f.relPath}", "${f.content} tampered"))
+        let tampered = mapList(pkg().files, fn(f) => Fixture::readRoute("${installDir()}/${f.relPath}", "${f.content} tampered"))
         let a = runVerify(listConcat(baseReads(lockText(currentLock())), tampered), [walkForPkg()], [])
         checkAll("a tampered tree is verify.digest", [reported(a, 1, "verify.digest @finch/http")])
     }

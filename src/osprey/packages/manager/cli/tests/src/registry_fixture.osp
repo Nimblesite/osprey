@@ -41,7 +41,7 @@ module RegistryFixture {
     fn webPath(r: WebRoute) = r.path
     fn replyOf(r: WebRoute) = Host::Reply { status: r.status, etag: "", body: r.body }
 
-    fn replyFor(webs, b, path) = foldList(webs, Error { message: "http.transport: no route ${b}${path}" }, fn(answer, w: WebRoute) => match answer {
+    fn replyFor(webs, b, path) = foldList(webs, Error { message: "http.transport: no route ${b}${path}" }, fn(answer, w) => match answer {
         Success => answer
         Error => if w.base == b && webPath(w) == path { Success { value: replyOf(w) } } else { answer }
     })

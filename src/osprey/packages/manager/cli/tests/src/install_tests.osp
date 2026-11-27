@@ -84,15 +84,15 @@ module InstallTests {
 
     fn installDir(s: Release::Served) = Fetch::installDir(s.id)
 
-    fn readsOf(s: Release::Served) = mapList(s.files, fn(f: Release::File) => Fixture::readRoute("${installDir(s)}/${f.relPath}", f.content))
+    fn readsOf(s) = mapList(s.files, fn(f) => Fixture::readRoute("${installDir(s)}/${f.relPath}", f.content))
 
     fn lockRead(served) = Fixture::readRoute("osprey.lock", lockText(served))
 
-    fn walkOf(s: Release::Served) = Fixture::walkRoute(installDir(s), mapList(s.files, fn(f: Release::File) => f.relPath))
+    fn walkOf(s) = Fixture::walkRoute(installDir(s), mapList(s.files, fn(f) => f.relPath))
 
     fn sourcePath(s: Release::Served) = "/v1/releases/${s.id.digest}/source"
 
-    fn sourceWeb(s: Release::Served) = webRoute(localBase, sourcePath(s), 200, Bundle::encode(s) ?: "")
+    fn sourceWeb(s) = webRoute(localBase, sourcePath(s), 200, Bundle::encode(s) ?: "")
 
     /// The report of a two-package install: accepted, exactly two lines,
     /// the first `= @demo/one` and the second `secondLine`.
@@ -131,7 +131,7 @@ module InstallTests {
         let os = both()
         let first = Fixture::at(os, 0)
         let second = Fixture::at(os, 1)
-        let corruptReads = mapList(second.files, fn(f: Release::File) => Fixture::readRoute("${installDir(second)}/${f.relPath}", "${f.content} tampered"))
+        let corruptReads = mapList(second.files, fn(f) => Fixture::readRoute("${installDir(second)}/${f.relPath}", "${f.content} tampered"))
         let a = runInstall(
             listConcat([lockRead(os)], listConcat(readsOf(first), corruptReads)),
             [walkOf(first), walkOf(second)],

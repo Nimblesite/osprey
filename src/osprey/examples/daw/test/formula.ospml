@@ -1,5 +1,7 @@
 import uitest::Drive
 
+octaveArpeggio = "48 + t % 4 * 12"
+
 // [SYNTH-FORMULA-NOTES] A person adds a formula melody from the Add component picker, types formulas into its
 // inspector and reads the notes each one plays; a formula that does not parse is refused with its column and
 // leaves the patch as it was; a saved melody reopens with its formula.
@@ -29,12 +31,12 @@ formulaMenuJourney () =
     plays (selected, "C4 G4 D4 A4 E4 B4 F♯4 C♯4 G♯4 D♯4 A♯4 F4 C4 G4 D4 A4")
     forEachList (["Velocity", "Step (frames)", "Gate (frames)", "Steps"], \text => reads (dialOf (selected, text), \dial => expect (dial.accessMax > dial.accessMin, true)))
     offeredIn (selected, "Canvas output 0:0", true)
-    octaves = formulaChoice (selected, "48 + t % 4 * 12")
-    formulaHeld (octaves, "48 + t % 4 * 12")
+    octaves = formulaChoice (selected, octaveArpeggio)
+    formulaHeld (octaves, octaveArpeggio)
     mentions (octaves, "Patch updated.")
     plays (octaves, repeated ("C3 C4 C5 C6", 4))
     broken = formulaChoice (octaves, "48 + )")
-    formulaHeld (broken, "48 + t % 4 * 12")
+    formulaHeld (broken, octaveArpeggio)
     mentions (broken, "Formula: unexpected ')' at column 6.")
     sameGraph (broken, octaves)
     unknown = formulaChoice (octaves, "48 + x")
@@ -49,7 +51,7 @@ formulaMenuJourney () =
 // A saved melody keeps its formula in the project's asset and reopens as the same graph; a project whose
 // formula no longer parses says why the track cannot open.
 projectFormulaJourney () =
-    melody = synth::Components::formulaMelody (21, "48 + t % 4 * 12")
+    melody = synth::Components::formulaMelody (21, octaveArpeggio)
     sine = synth::Components::sine (22, 440.0)
     voice = sine(inputs = [synth::Port(name = "notes", rate = synth::Events, channels = 1, unit = synth::Notes)])
     valid (synth::Patches::built ([melody, voice, synth::Components::output 23], [synth::Components::route (21, 0, 22, 0), synth::Components::route (22, 0, 23, 0)]), \graph =>
