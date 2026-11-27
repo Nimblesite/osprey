@@ -80,7 +80,7 @@ effect Arith {
 An arithmetic operation that MAY perform an `Arith` operation seeds that requirement exactly as a syntactic `perform` does. Everything in [EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md#effectful-function-types) then applies unchanged: requirements propagate through named calls, lambdas passed to higher-order functions, and fibers; discharge is operation-specific, so a handler covering only `overflow` leaves `remainderByZero` for an enclosing handler; the program entry MUST have no remaining requirements. A program that computes and never installs a policy is rejected at compile time with the existing diagnostic shape:
 
 ```text
-unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
+main.osp:3:0: unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
 Host GPU combinators (`gpuMap`, `gpuFilter`, `gpuFold`, `gpuScan` and `gpuZipWith`) invoke their callbacks and therefore propagate the callbacks' arithmetic requirements. This applies to inline lambdas, named helpers and builtin function values. Kernel stage-legality checks do not discharge `Arith`; an integer `abs` or `intDiv` kernel still requires a matching surrounding policy. A recovery arm's own fallible arithmetic still requires an outer handler.

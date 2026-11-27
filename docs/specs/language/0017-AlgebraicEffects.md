@@ -238,7 +238,11 @@ cannot be generalized into incompatible uses.
 operation it supplies, at the matching instantiation and instance. Arm, return
 and finalizer requirements remain in the enclosing row. A missing operation
 names its effect, operation and relevant handler in the diagnostic. The selected
-program entry has an empty closed row. Compiler-provided host operations retain
+program entry has an empty closed row. A requirement the entry cannot discharge
+is reported at the first top-level statement that brings it in, or at `main`'s
+declaration when the top-level statements bring in none; a library export's is
+reported at the export's declaration. The same holds for an unresolved callable
+and an undischargeable callback. Compiler-provided host operations retain
 their declared target capabilities; this rule does not turn builtin I/O into
 untracked pure computation.
 
