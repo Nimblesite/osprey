@@ -606,36 +606,36 @@ liveDialJourney () =
     place = madeRoom "live-dial"
     track = keysTrack ()
     score = timeline [track(notes = [beatNote 1.0])]
-    succeeds (daw::Projects::saved (score, "${place}/knobs.json"), \_ =>
-        session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
-        started = Drive::press (session, "Play Song")
-        chosen = inspectorSelected (Drive::press (started, "Patch Controls"), 2)
-        reads (dialOf (chosen, "Gain"), \dial =>
-            at = uitest::Semantics::point (dial, 0.5)
-            down = dialPointer (chosen, at.pointX, at.pointY, true, false)
-            moving = dialPointer (down, at.pointX, at.pointY + 160.0, true, false)
-            expect ((Drive::holding moving).dial != synth::DialIdle, true)
-            expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
-            reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
-            succeeds (daw::Playback::start score, \initial =>
-                succeeds (daw::Playback::step (score, initial, 512), \first =>
-                    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
-                    liveDialBlock (place, stream, \(quiet, muted) =>
-                        bothSilent quiet
-                        louder = dialPointer (moving, at.pointX, at.pointY - 60.0, true, false)
-                        expect ((Drive::holding louder).dial != synth::DialIdle, true)
-                        reads (dialOf (louder, "Gain"), \raised =>
-                            expect (raised.accessValue > dial.accessValue, true)
-                            liveDialBlock (place, muted, \(loud, applied) =>
-                                expect (applied.controlVersion > muted.controlVersion, true)
-                                audible loud.left
-                                released = dialPointer (louder, at.pointX, at.pointY - 60.0, false, false)
-                                expect ((Drive::holding released).dial, synth::DialIdle)
-                                reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
-                                liveDialBlock (place, applied, \(after, settled) =>
-                                    expect (settled.playing.cursor, 704)
-                                    succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64), \expected =>
-                                        expect (sidesDiffer (expected.left, after.left), false))))))))))
+    use _ <- succeeds (daw::Projects::saved (score, "${place}/knobs.json"))
+    session = editorLaunched ["--song", "${place}/knobs.json", "--renderer", "${place}/daw", "--vst-worker", "${place}/worker"]
+    started = Drive::press (session, "Play Song")
+    chosen = inspectorSelected (Drive::press (started, "Patch Controls"), 2)
+    use dial <- reads (dialOf (chosen, "Gain"))
+    at = uitest::Semantics::point (dial, 0.5)
+    down = dialPointer (chosen, at.pointX, at.pointY, true, false)
+    moving = dialPointer (down, at.pointX, at.pointY + 160.0, true, false)
+    expect ((Drive::holding moving).dial != synth::DialIdle, true)
+    expect ((Drive::holding moving).songTicket, "daw-song:live:${place}/knobs/live")
+    reads (dialOf (moving, "Gain"), \seen => expect (seen.accessValue, 0.0))
+    use initial <- succeeds (daw::Playback::start score)
+    use first <- succeeds (daw::Playback::step (score, initial, 512))
+    stream = daw::LiveStream(playing = first.playing, controlVersion = 0, controlScore = score, noteFolders = [])
+    use quiet, muted <- liveDialBlock (place, stream)
+    bothSilent quiet
+    louder = dialPointer (moving, at.pointX, at.pointY - 60.0, true, false)
+    expect ((Drive::holding louder).dial != synth::DialIdle, true)
+    use raised <- reads (dialOf (louder, "Gain"))
+    expect (raised.accessValue > dial.accessValue, true)
+    use loud, applied <- liveDialBlock (place, muted)
+    expect (applied.controlVersion > muted.controlVersion, true)
+    audible loud.left
+    released = dialPointer (louder, at.pointX, at.pointY - 60.0, false, false)
+    expect ((Drive::holding released).dial, synth::DialIdle)
+    reads (dialOf (released, "Gain"), \kept => expect (kept.accessValue, raised.accessValue))
+    use after, settled <- liveDialBlock (place, applied)
+    expect (settled.playing.cursor, 704)
+    use expected <- succeeds (daw::Playback::step (applied.controlScore, applied.playing, 64))
+    expect (sidesDiffer (expected.left, after.left), false)
 
 // `routing` with every `component` node carrying only `setting`.
 retuned (routing, component, setting) = routing(nodes = mapList (routing.nodes, \n => ui::Pick::either (n.component == component, n(settings = [setting]), n)))
