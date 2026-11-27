@@ -101,27 +101,106 @@ class Parsed[T]:
 
 
 def peek(ts, i):
-    """Token `i`, or an end-of-file token past the end."""
+    """Token `i`, or an end-of-file token past the end.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("x = 1"), [])
+        print(f"{Ir.peek(ts, 0).text} {Ir.peek(ts, 1).kind} {Ir.peek(ts, 99).kind}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    x punctuation eof
+    ```
+    """
     return unwrap_or(listGet(ts, i), Lexer.Token(kind=Lexer.EOF, text="", line=0))
 
 
 def is_punct(ts, i, text):
-    """Whether token `i` is the punctuation `text`."""
+    """Whether token `i` is the punctuation `text`.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("x = 1"), [])
+        print(f"{Ir.is_punct(ts, 1, '=')} {Ir.is_punct(ts, 0, '=')}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    true false
+    ```
+    """
     return peek(ts, i).kind == Lexer.PUNCT and peek(ts, i).text == text
 
 
 def is_word(ts, i, word):
-    """Whether token `i` is the bare identifier `word`."""
+    """Whether token `i` is the bare identifier `word`.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("module x"), [])
+        print(f"{Ir.is_word(ts, 0, 'module')} {Ir.is_word(ts, 1, 'module')}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    true false
+    ```
+    """
     return peek(ts, i).kind == Lexer.BARE and peek(ts, i).text == word
 
 
 def fail(ts, i, expected):
-    """The parse error for token `i`: its line, what was expected and what was there."""
+    """The parse error for token `i`: its line, what was expected and what was there.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("x = 1"), [])
+        match Ir.fail(ts, 2, "a type"):
+            case Error(message=m):
+                print(m)
+            case Success():
+                print("parsed")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    line 1: expected a type, found '1'
+    ```
+    """
     return Error(message=f"line {peek(ts, i).line}: expected {expected}, found '{peek(ts, i).text}'")
 
 
 def expect(ts, i, text) -> Result[int, str]:
-    """The index after the punctuation `text` at `i`."""
+    """The index after the punctuation `text` at `i`.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens("x = 1"), [])
+        print(f"{unwrap_or(Ir.expect(ts, 1, '='), -1)} {unwrap_or(Ir.expect(ts, 0, '='), -1)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    2 -1
+    ```
+    """
     if is_punct(ts, i, text):
         return Success(value=wrapAdd(i, 1))
     else:
@@ -129,7 +208,25 @@ def expect(ts, i, text) -> Result[int, str]:
 
 
 def done(value, next):
-    """A successful parse of `value` ending before token `next`."""
+    """A successful parse of `value` ending before token `next`.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir
+
+    def show():
+        match Ir.done("value", 3):
+            case Success(value=p):
+                print(f"{p.value} {p.next}")
+            case Error():
+                print("failed")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    value 3
+    ```
+    """
     return Success(value=Parsed(value=value, next=next))
 
 
@@ -143,7 +240,23 @@ def attr_at(entries, name, i):
 
 
 def get_attr(entries, name) -> Result[Attribute, str]:
-    """The value of the entry named `name` in a property or attribute dictionary."""
+    """The value of the entry named `name` in a property or attribute dictionary.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
+        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
+        print(f"{Ir.get_attr(entries, 'width')} {Ir.get_attr(entries, 'missing')}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(IntegerAttr { value: 32, type: IntegerType { width: 64 } }) Error(no attribute 'missing')
+    ```
+    """
     return attr_at(entries, name, 0)
 
 
@@ -184,20 +297,84 @@ def as_dense(attr):
 
 
 def int_attr(entries, name) -> Result[int, str]:
-    """The integer entry `name` of a property or attribute dictionary."""
+    """The integer entry `name` of a property or attribute dictionary.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
+        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
+        print(f"{Ir.int_attr(entries, "width")} {Ir.int_attr(entries, \"missing\")}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(32) Error(no attribute 'missing')
+    ```
+    """
     return andThen(get_attr(entries, name), as_int)
 
 
 def string_attr(entries, name) -> Result[str, str]:
-    """The string entry `name` of a property or attribute dictionary."""
+    """The string entry `name` of a property or attribute dictionary.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
+        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
+        print(f"{Ir.string_attr(entries, "name")} {Ir.string_attr(entries, \"missing\")}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(x) Error(no attribute 'missing')
+    ```
+    """
     return andThen(get_attr(entries, name), as_string)
 
 
 def symbol_attr(entries, name) -> Result[str, str]:
-    """The symbol entry `name` of a property or attribute dictionary."""
+    """The symbol entry `name` of a property or attribute dictionary.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
+        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
+        print(f"{Ir.symbol_attr(entries, "sym")} {Ir.symbol_attr(entries, \"missing\")}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success(main) Error(no attribute 'missing')
+    ```
+    """
     return andThen(get_attr(entries, name), as_symbol)
 
 
 def dense_attr(entries, name) -> Result[list[int], str]:
-    """The dense integer array entry `name` of a property or attribute dictionary."""
+    """The dense integer array entry `name` of a property or attribute dictionary.
+
+    # Examples
+    ```osprey
+    from xdsl import AttrParser, Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('{width = 32 : i64, name = "x", sym = @main, dims = array<i64: 1, 2>}'), [])
+        entries = unwrap_or(AttrParser.parse_dictionary(ts, 0), Ir.Parsed(value=[], next=0)).value
+        print(f"{Ir.dense_attr(entries, "dims")} {Ir.dense_attr(entries, \"missing\")}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    Success([1, 2]) Error(no attribute 'missing')
+    ```
+    """
     return andThen(get_attr(entries, name), as_dense)

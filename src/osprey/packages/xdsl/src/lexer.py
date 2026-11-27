@@ -14,30 +14,198 @@ for error messages.
 __all__ = ["Token", "tokens", "at", "cut", "is_digit", "UNCLOSED", "BARE", "AT", "HASH", "PERCENT", "CARET", "BANG", "INT", "FLOAT", "STRING", "PUNCT", "EOF"]
 
 BARE = "bare-ident"
-"""`bare-id ::= (letter|[_]) (letter|digit|[_$.])*`."""
+"""`bare-id ::= (letter|[_]) (letter|digit|[_$.])*`.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.BARE)
+
+wrappingArithmetic(show)
+```
+```output
+bare-ident
+```
+"""
 AT = "at-ident"
-"""``at-ident ::= `@` (bare-id | string-literal)``."""
+"""``at-ident ::= `@` (bare-id | string-literal)``.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.AT)
+
+wrappingArithmetic(show)
+```
+```output
+at-ident
+```
+"""
 HASH = "hash-ident"
-"""``hash-ident ::= `#` suffix-id``."""
+"""``hash-ident ::= `#` suffix-id``.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.HASH)
+
+wrappingArithmetic(show)
+```
+```output
+hash-ident
+```
+"""
 PERCENT = "percent-ident"
-"""``percent-ident ::= `%` suffix-id``."""
+"""``percent-ident ::= `%` suffix-id``.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.PERCENT)
+
+wrappingArithmetic(show)
+```
+```output
+percent-ident
+```
+"""
 CARET = "caret-ident"
-"""``caret-ident ::= `^` suffix-id``."""
+"""``caret-ident ::= `^` suffix-id``.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.CARET)
+
+wrappingArithmetic(show)
+```
+```output
+caret-ident
+```
+"""
 BANG = "exclamation-ident"
-"""``exclamation-ident ::= `!` suffix-id``."""
+"""``exclamation-ident ::= `!` suffix-id``.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.BANG)
+
+wrappingArithmetic(show)
+```
+```output
+exclamation-ident
+```
+"""
 INT = "integer"
-"""A decimal or `0x` hexadecimal integer literal."""
+"""A decimal or `0x` hexadecimal integer literal.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.INT)
+
+wrappingArithmetic(show)
+```
+```output
+integer
+```
+"""
 FLOAT = "float"
-"""A decimal literal with a fraction."""
+"""A decimal literal with a fraction.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.FLOAT)
+
+wrappingArithmetic(show)
+```
+```output
+float
+```
+"""
 STRING = "string"
-"""A double-quoted string literal, quotes included."""
+"""A double-quoted string literal, quotes included.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.STRING)
+
+wrappingArithmetic(show)
+```
+```output
+string
+```
+"""
 PUNCT = "punctuation"
-"""Punctuation: `-> : , ... = > { ( [ < - + ? / } ) ] * |`."""
+"""Punctuation: `-> : , ... = > { ( [ < - + ? / } ) ] * |`.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.PUNCT)
+
+wrappingArithmetic(show)
+```
+```output
+punctuation
+```
+"""
 EOF = "eof"
-"""The end of the input."""
+"""The end of the input.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.EOF)
+
+wrappingArithmetic(show)
+```
+```output
+eof
+```
+"""
 
 UNCLOSED = "End of file reached before closing string literal."
-"""xDSL's message for a string literal with no closing quote or an escape it does not know."""
+"""xDSL's message for a string literal with no closing quote or an escape it does not know.
+
+# Examples
+```osprey
+from xdsl import Lexer
+
+def show():
+    print(Lexer.UNCLOSED)
+
+wrappingArithmetic(show)
+```
+```output
+End of file reached before closing string literal.
+```
+"""
 
 
 class Token:
@@ -48,12 +216,40 @@ class Token:
 
 
 def at(text, i):
-    """The byte at `i`, or 0 past the end."""
+    """The byte at `i`, or 0 past the end.
+
+    # Examples
+    ```osprey
+    from xdsl import Lexer
+
+    def show():
+        print(f"{Lexer.at('ab', 0)} {Lexer.at('ab', 1)} {Lexer.at('ab', 5)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    97 98 0
+    ```
+    """
     return unwrap_or(byteAt(text, i), 0)
 
 
 def cut(text, start, end):
-    """The bytes `[start, end)` of `text`."""
+    """The bytes `[start, end)` of `text`.
+
+    # Examples
+    ```osprey
+    from xdsl import Lexer
+
+    def show():
+        print(f"[{Lexer.cut('builtin.module', 0, 7)}] [{Lexer.cut('abc', 2, 9)}]")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    [builtin] []
+    ```
+    """
     return unwrap_or(substring(text, start, end), "")
 
 
@@ -63,7 +259,21 @@ def is_alpha(b):
 
 
 def is_digit(b):
-    """An ASCII digit."""
+    """An ASCII digit.
+
+    # Examples
+    ```osprey
+    from xdsl import Lexer
+
+    def show():
+        print(f"{Lexer.is_digit(55)} {Lexer.is_digit(97)}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    true false
+    ```
+    """
     return b >= 48 and b <= 57
 
 
@@ -242,5 +452,20 @@ def lex_lines(lines, number, done) -> Result[list[Token], str]:
 
 
 def tokens(source) -> Result[list[Token], str]:
-    """Every token of `source`, ending with one `EOF` token."""
+    """Every token of `source`, ending with one `EOF` token.
+
+    # Examples
+    ```osprey
+    from xdsl import Ir, Lexer
+
+    def show():
+        ts = unwrap_or(Lexer.tokens('%0 = "test.op"() : () -> i32'), [])
+        print(f"{len(ts)} tokens: {Ir.peek(ts, 0).kind} {Ir.peek(ts, 2).kind} {Ir.peek(ts, 10).kind}")
+
+    wrappingArithmetic(show)
+    ```
+    ```output
+    11 tokens: percent-ident string eof
+    ```
+    """
     return lex_lines(unwrap_or(split(source, "\n"), []), 1, [])
