@@ -20,7 +20,7 @@ resource "google_service_account" "runtime" {
 resource "google_kms_crypto_key_iam_member" "login_verifier" {
   count         = var.login_kms_key == null ? 0 : 1
   crypto_key_id = var.login_kms_key
-  role          = "roles/cloudkms.cryptoKeyEncrypter"
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
   member        = "serviceAccount:${google_service_account.runtime.email}"
   depends_on    = [google_project_service.required]
 }

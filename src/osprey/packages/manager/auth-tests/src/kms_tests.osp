@@ -11,31 +11,43 @@ module KmsTests {
     let aad = "test"
     let token = "{\"access_token\":\"fixture-token\",\"token_type\":\"Bearer\"}"
     let tokenHeader = "Authorization: Bearer fixture-token\r\nContent-Type: application/json"
-    let payload = "{\"additionalAuthenticatedData\":\"dGVzdA==\",\"plaintext\":\"ZEJqZnRKZVo0Q1ZQLW1COTJLMjd1aGJVSlUxcDFyX3dXMWdGV0ZPRWpYaw==\"}"
+    let clear = "ZEJqZnRKZVo0Q1ZQLW1COTJLMjd1aGJVSlUxcDFyX3dXMWdGV0ZPRWpYaw=="
+    let encryptBody = "{\"additionalAuthenticatedData\":\"dGVzdA==\",\"plaintext\":\"${clear}\"}"
+    let decryptBody = "{\"additionalAuthenticatedData\":\"dGVzdA==\",\"ciphertext\":\"YQ==\"}"
 
-    fn seal(metadata, code, ciphertext, resource) = {
-        let mock = handler Supabase::Provider {
+    fn kms(metadata, operation, payload, code, reply) = handler Supabase::Provider {
             request method base path headers body =>
                 if method == "GET" && base == "http://metadata.google.internal"
                     && path == "/computeMetadata/v1/instance/service-accounts/default/token" && headers == "Metadata-Flavor: Google" {
                     Success { value: Supabase::Reply { status: 200, body: metadata } }
-                } else if method == "POST" && base == "https://cloudkms.googleapis.com" && path == "/v1/${key}:encrypt"
+                } else if method == "POST" && base == "https://cloudkms.googleapis.com" && path == "/v1/${key}:${operation}"
                     && headers == tokenHeader && body == payload {
-                    Success { value: Supabase::Reply { status: code, body: ciphertext } }
+                    Success { value: Supabase::Reply { status: code, body: reply } }
                 } else { Error { message: "fixture.unexpected-kms-request" } }
-        }
-        mock(fn() => LoginKms::seal(resource, aad, verifier))
     }
+
+    fn seal(metadata, code, reply) = kms(metadata, "encrypt", encryptBody, code, reply)(fn() => LoginKms::seal(key, aad, verifier))
+
+    fn unseal(code, encoded) = kms(token, "decrypt", decryptBody, code, "{\"plaintext\":\"${encoded}\"}")(
+        fn() => LoginKms::unseal(key, aad, "YQ=="))
 
     let sealedReply = "{\"ciphertext\":\"YQ==\"}"
 
     fn expectedResponses() = checkAll("KMS sends padded base64 and accepts only ciphertext from a successful response", [
-        (seal(token, 200, sealedReply, key) ?: "") == "YQ==",
-        (seal(token, 302, sealedReply, key) ?: "denied") == "denied",
-        (seal(token, 200, "{\"ciphertext\":\"<bad>\"}", key) ?: "denied") == "denied",
-        (seal("{\"access_token\":\"fixture-token\"}", 200, sealedReply, key) ?: "denied") == "denied",
+        (seal(token, 200, sealedReply) ?: "") == "YQ==",
+        (seal(token, 302, sealedReply) ?: "denied") == "denied",
+        (seal(token, 200, "{\"ciphertext\":\"<bad>\"}") ?: "denied") == "denied",
+        (seal("{\"access_token\":\"fixture-token\"}", 200, sealedReply) ?: "denied") == "denied",
         !LoginKms::validKey(key + "/cryptoKeyVersions/1"),
         !LoginKms::validKey("projects/fixture/locations/global/keyRings/registry/cryptoKeys/../key")
+    ])
+
+    fn expectedPlaintext() = checkAll("KMS accepts only a successful canonical encoded verifier", [
+        (unseal(200, clear) ?: "denied") == verifier,
+        (unseal(403, clear) ?: "denied") == "denied",
+        (unseal(200, replace(clear, "aw==", "ax==") ?: "") ?: "denied") == "denied",
+        (unseal(200, replace(clear, "ZEJq", "////") ?: "") ?: "denied") == "denied",
+        (unseal(200, replace(clear, "==", "") ?: "") ?: "denied") == "denied"
     ])
 
     fn failStore(_flow: string, _browser: string, _sealed: string) -> Result<string, string> = Error { message: "fixture.storage-failed" }
@@ -52,6 +64,7 @@ module KmsTests {
 
     export fn run() = {
         test("auth: Cloud KMS verifier encryption", expectedResponses)
+        test("auth: Cloud KMS verifier decryption", expectedPlaintext)
         test("auth: login redirect depends on durable storage", failedStart)
     }
 }

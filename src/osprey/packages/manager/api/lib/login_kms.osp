@@ -44,9 +44,11 @@ module LoginKms {
         } else { Error { message: unavailable } }
     }
 
+    fn envelopeOk(value) = byteLength(value) > 0 && byteLength(value) <= 4096 && Bytes::everyByte(value, fn(b) => Bytes::isAlnumIn(b, [43, 47, 61]))
+
     fn ciphertext(doc) = {
         let value = field(doc, "ciphertext")
-        if byteLength(value) > 0 && byteLength(value) <= 4096 && Bytes::everyByte(value, fn(b) => Bytes::isAlnumIn(b, [43, 47, 61])) {
+        if envelopeOk(value) {
             Success { value: value }
         } else { Error { message: unavailable } }
     }
@@ -54,8 +56,10 @@ module LoginKms {
     fn credentials() = andThen(perform Supabase::Provider.request("GET", "http://metadata.google.internal",
         "/computeMetadata/v1/instance/service-accounts/default/token", "Metadata-Flavor: Google", ""), fn(reply) => andThen(json(reply), token))
 
-    fn encrypt(key, token, body) = andThen(perform Supabase::Provider.request("POST", "https://cloudkms.googleapis.com",
-        "/v1/${key}:encrypt", "Authorization: Bearer ${token}\r\nContent-Type: application/json", body), fn(reply) => andThen(json(reply), ciphertext))
+    fn request(key, operation, token, body, read) = andThen(perform Supabase::Provider.request("POST", "https://cloudkms.googleapis.com",
+        "/v1/${key}:${operation}", "Authorization: Bearer ${token}\r\nContent-Type: application/json", body), fn(reply) => andThen(json(reply), read))
+
+    fn submit(key, operation, body, read) = andThen(credentials(), fn(token) => request(key, operation, token, body, read))
 
     fn payload(aad, verifier) = Canonical::serialize(Json::obj([
         Json::member("additionalAuthenticatedData", Json::str(b64(aad))),
@@ -63,6 +67,41 @@ module LoginKms {
     ]))
 
     export fn seal(key, aad, verifier) = if validKey(key) && OAuth::challengeCode(verifier) == "" && byteLength(aad) <= 1024 {
-        andThen(payload(aad, verifier), fn(body) => andThen(credentials(), fn(token) => encrypt(key, token, body)))
+        andThen(payload(aad, verifier), fn(body) => submit(key, "encrypt", body, ciphertext))
+    } else { Error { message: unavailable } }
+    let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+    fn sextet(text, index) = indexOf(alphabet, (substring(text, index, index + 1) ?: "")) ?: 0
+
+    fn clearByte(encoded, index) = {
+        let start = intDiv(index, 3) * 4
+        let offset = index % 3
+        let first = sextet(encoded, start + offset)
+        let next = sextet(encoded, start + offset + 1)
+        if offset == 0 { first * 4 + intDiv(next, 16) }
+        else if offset == 1 { (first % 16) * 16 + intDiv(next, 4) }
+        else { (first % 4) * 64 + next }
+    }
+
+    fn plaintext(doc) = {
+        let encoded = field(doc, "plaintext")
+        if byteLength(encoded) != 60 || !endsWith(encoded, "==") { Error { message: unavailable } }
+        else { verifierOf(encoded) }
+    }
+
+    fn verifierOf(encoded) = {
+        let clear = join(mapList(range(0, 43) |> toList, fn(i) => fromCodePoint(clearByte(encoded, i)) ?: ""), "")
+        if OAuth::challengeCode(clear) == "" && b64(clear) == encoded { Success { value: clear } }
+        else { Error { message: unavailable } }
+    }
+
+    fn decryptPayload(aad, envelope) = Canonical::serialize(Json::obj([
+        Json::member("additionalAuthenticatedData", Json::str(b64(aad))),
+        Json::member("ciphertext", Json::str(envelope))
+    ]))
+
+    /// KMS authenticates the callback and both browser-bound digests before disclosing the verifier.
+    export fn unseal(key, aad, envelope) = if validKey(key) && envelopeOk(envelope) && byteLength(aad) <= 1024 {
+        andThen(decryptPayload(aad, envelope), fn(body) => submit(key, "decrypt", body, plaintext))
     } else { Error { message: unavailable } }
 }

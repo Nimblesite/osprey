@@ -1,5 +1,6 @@
 namespace registry_api;
 import registry::Digests
+import registry::Bytes
 import registry::Json
 import registry::JsonRead
 import registry_host::LoginFlow
@@ -32,14 +33,14 @@ module HostedLogin {
         let flowState = OAuth::nonce()
         let browser = OAuth::nonce()
         let verifier = OAuth::nonce()
-        let stateDigest = Digests::hashText("registry.oauth.state.v1", flowState)
-        let browserDigest = Digests::hashText("registry.oauth.browser.v1", browser)
+        let stateDigest = stateHash(flowState)
+        let browserDigest = browserHash(browser)
         andThen(OAuth::authorizeUrl(oauth, OAuth::challenge(verifier)), fn(url) =>
             saved(oauth.callback, stateDigest, browserDigest, verifier, url, cookie(flowState, browser), seal, store))
     }
 
     fn saved(callback, stateDigest, browserDigest, verifier, url, flowCookie, seal, store) =
-        andThen(seal("registry.oauth.verifier.v1\n${callback}\n${stateDigest}\n${browserDigest}", verifier), fn(envelope) =>
+        andThen(seal(aad(callback, stateDigest, browserDigest), verifier), fn(envelope) =>
             andThen(store(stateDigest, browserDigest, envelope), fn(_receipt) =>
                 Success { value: Redirect { location: url, cookie: flowCookie } }))
 
@@ -50,4 +51,47 @@ module HostedLogin {
             ProviderNative::transport()(fn() => start(config.oauth, fn(aad, verifier) => LoginKms::seal(config.key, aad, verifier), LoginFlow::save))
         }
     }
+    export let refused = "auth.callback-invalid"
+    export let expiredCookie = "${cookieName}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax"
+
+    fn aad(callback, stateDigest, browserDigest) = "registry.oauth.verifier.v1\n${callback}\n${stateDigest}\n${browserDigest}"
+
+    fn stateHash(flowState) = Digests::hashText("registry.oauth.state.v1", flowState)
+
+    fn browserHash(browser) = Digests::hashText("registry.oauth.browser.v1", browser)
+
+    fn receivedCode(path) = {
+        let prefix = OAuth::callbackPath + "?code="
+        let code = drop(path, byteLength(prefix))
+        if startsWith(path, prefix) && byteLength(code) > 0 && byteLength(code) <= 128 &&
+            Bytes::everyByte(code, fn(b) => Bytes::isAlnumIn(b, [Bytes::hyphen, Bytes::underscore])) {
+            Success { value: code }
+        } else { Error { message: refused } }
+    }
+
+    fn cookieTokens(headers) = {
+        let raw = HostedHeaders::find(headers, "cookie") ?: ""
+        let tokens = split(HostedCookies::foundValue(HostedCookies::select(raw, cookieName)), ".") ?: []
+        if length(tokens) == 2 && foldList(tokens, true, fn(ok, token) => ok && OAuth::challengeCode(token) == "") {
+            Success { value: tokens }
+        } else { Error { message: refused } }
+    }
+
+    fn verified(oauth, code, tokens, claim, open) = {
+        let stateDigest = stateHash(listGet(tokens, 0) ?: "")
+        let browserDigest = browserHash(listGet(tokens, 1) ?: "")
+        andThen(claim(stateDigest, browserDigest), fn(envelope) =>
+            if envelope == "" { Error { message: refused } }
+            else { andThen(open(aad(oauth.callback, stateDigest, browserDigest), envelope), fn(verifier) => Supabase::exchange(oauth, code, verifier)) })
+    }
+
+    /// Consume the browser-bound flow before contacting KMS or exchanging an OAuth code.
+    export fn callback(oauth, path, headers, claim, open) = andThen(receivedCode(path), fn(code) =>
+        andThen(cookieTokens(headers), fn(tokens) => verified(oauth, code, tokens, claim, open)))
+
+    /// The native callback exchange is separate from session issuance, which requires a live approved binding.
+    export fn nativeCallback(config: Settings, path, headers) =
+        if config.key == "" { unavailable() }
+        else { ProviderNative::transport()(fn() => callback(config.oauth, path, headers, LoginFlow::redeem,
+            fn(context, envelope) => LoginKms::unseal(config.key, context, envelope))) }
 }
