@@ -94,7 +94,7 @@ fn flavor_roots() -> Vec<PathBuf> {
         .iter()
         .map(|relative| {
             let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
-            dir.canonicalize().unwrap_or(dir)
+            osprey_project::paths::canonical_or_given(&dir)
         })
         .collect()
 }

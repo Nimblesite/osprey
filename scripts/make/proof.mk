@@ -130,6 +130,10 @@ _conformance-ownership:
 # kernel's `natAddCommBad` fixture makes. Forged at test time, never committed.
 LEAN_TAMPER = sed 's/"name":235,"type":730,"value":817/"name":235,"type":730,"value":730/' src/osprey/examples/proof/kernel/exports/nat_add_comm.ndjson > target/disciplines/lean_roundtrip/tampered.ndjson
 
+# DISCIPLINE_WASM=0 leaves out the wasm32 leg, for the Windows and macOS jobs, whose runners
+# carry no WASI sysroot; Linux CI runs every leg ([TYPES-DISCIPLINE-REFERENCE]).
+DISCIPLINE_WASM ?= 1
+
 # discipline_roundtrip: one reference discipline proved through the whole seam
 # (checker build, protocol, erasure, signature ascription), not just its
 # checker. $(1) is the package, $(2) its round-trip program, $(3) the module the
@@ -145,8 +149,8 @@ define discipline_roundtrip
 	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/$(2) --run --memory=gc 2>/dev/null | diff - src/osprey/examples/disciplines/$(2)/expectedoutput
 	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/$(2) --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/$(2)/expectedoutput
 	@$(MKDIR) target/disciplines
-	./$(BIN) src/osprey/examples/disciplines/$(2) --target=wasm32 --compile -o target/disciplines/$(1).wasm >/dev/null 2>&1
-	node scripts/wasm/wasm-smoke.mjs target/disciplines/$(1).wasm src/osprey/examples/disciplines/$(2)/expectedoutput
+	$(if $(filter 1,$(DISCIPLINE_WASM)),./$(BIN) src/osprey/examples/disciplines/$(2) --target=wasm32 --compile -o target/disciplines/$(1).wasm >/dev/null 2>&1)
+	$(if $(filter 1,$(DISCIPLINE_WASM)),node scripts/wasm/wasm-smoke.mjs target/disciplines/$(1).wasm src/osprey/examples/disciplines/$(2)/expectedoutput)
 	@echo "==> [disciplines] $(1): the rejected variant is refused..."
 	@$(RM) target/disciplines/$(2)
 	cp -R src/osprey/examples/disciplines/$(2) target/disciplines/$(2)

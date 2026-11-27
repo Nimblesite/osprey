@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 fn repository_root() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    root.canonicalize().unwrap_or(root)
+    osprey_project::paths::canonical_or_given(&root)
 }
 
 /// `tests`, resolved from the crate manifest so the gate runs the same on a

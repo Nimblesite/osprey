@@ -312,10 +312,10 @@ mod suite_context {
                 "the suite child inherited the stale compiler `{recorded}`."
             ));
         }
-        let named = std::fs::canonicalize(recorded).map_err(|error| {
+        let named = osprey_project::paths::canonical(recorded).map_err(|error| {
             format!("the suite child reported `{recorded}`, not a file: {error}")
         })?;
-        let running = std::fs::canonicalize(env!("CARGO_BIN_EXE_osprey"))
+        let running = osprey_project::paths::canonical(env!("CARGO_BIN_EXE_osprey"))
             .map_err(|error| format!("could not resolve the running compiler: {error}"))?;
         if named != running {
             return Err(format!(

@@ -83,8 +83,7 @@ fn found(root: &Path) -> Vec<String> {
     let mut names: Vec<String> = paths
         .iter()
         .map(|path| {
-            let directory = path
-                .canonicalize()
+            let directory = osprey_project::paths::canonical(path)
                 .expect("a discovered source exists")
                 .components()
                 .rev()

@@ -32,10 +32,7 @@ const FIRST_CONSUMER: &str = "lean4";
 const SOURCE_EXTENSIONS: [&str; 3] = ["rs", "c", "h"];
 
 fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../..")
-        .canonicalize()
-        .expect("repository root")
+    osprey_project::paths::canonical(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")).expect("repository root")
 }
 
 /// `name = "<word>"` of every `[discipline]` table under `src/osprey/examples/disciplines`.

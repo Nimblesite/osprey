@@ -128,9 +128,7 @@ fn assert_generators_agree(stdin: &str, device: &str) -> std::io::Result<String>
 #[test]
 fn python_gpt2_project_contains_no_osprey_flavor_source() -> std::io::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let python = root
-        .join("src/osprey/examples/llms/gpt2/python")
-        .canonicalize()?;
+    let python = osprey_project::paths::canonical(root.join("src/osprey/examples/llms/gpt2/python"))?;
     let project = python.join("generate");
     let manifest = std::fs::read_to_string(project.join("osprey.toml"))?;
     let roots = manifest
@@ -139,7 +137,7 @@ fn python_gpt2_project_contains_no_osprey_flavor_source() -> std::io::Result<()>
         .and_then(|rest| rest.strip_suffix(']'))
         .expect("the generator manifest declares its source roots");
     for source_root in roots.split(',').map(|path| path.trim().trim_matches('"')) {
-        let resolved = project.join(source_root).canonicalize()?;
+        let resolved = osprey_project::paths::canonical(project.join(source_root))?;
         assert!(
             resolved.starts_with(&python),
             "source root `{source_root}` reaches outside the Python port: {}",
