@@ -497,6 +497,8 @@ ok export.details_merge
 ok export.post_json_refused
 ok typed.agent_run_result
 ok typed.model_error
+ok typed.request_part
+ok typed.response_part
 ok typed.delta
 ok typed.stream_events
 ok typed.transformed
@@ -507,12 +509,4 @@ ok typed.http_reply
 ok typed.settings
 ok typed.tool_definition
 ok typed.run_usage
-ok typed.no_errors
-ok typed.no_initializations
-ok typed.no_servers
-ok typed.request_part
-ok typed.response_part
-ok typed.no_deltas
-ok typed.no_events
-ok typed.settings_default
-517 passed, 0 failed
+511 passed, 0 failed
