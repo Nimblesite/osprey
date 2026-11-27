@@ -4,17 +4,19 @@ namespace synth
 
 (** The daw's keymaps, the file a user writes one in, and the checks a keymap must pass. *)
 module Keymaps
+    previousTrackAction = "previousTrack"
+
     bind (command, keys) = Shortcut(command = command, keys = keys)
 
-    prism () = Keymap(name = "Prism", shortcuts = [bind ("settings", "Cmd+OemComma"), bind ("open", "Cmd+O"), bind ("save", "Cmd+S"), bind ("render", "Cmd+R"), bind ("undo", "Cmd+Z"), bind ("redo", "Cmd+Shift+Z"), bind ("timeline", "Cmd+D1"), bind ("patch", "Cmd+D2"), bind ("routing", "Cmd+D3"), bind ("modules", "Cmd+L"), bind ("controls", "Cmd+I"), bind ("keyboard", "Cmd+K"), bind ("start", "Enter"), bind ("playSong", "Space"), bind ("stopSong", "Space"), bind ("loop", "L"), bind ("playPatch", "Shift+Space"), bind ("stopPatch", "Shift+Space"), bind ("audition", "Cmd+P"), bind ("previousTrack", "Cmd+Up"), bind ("nextTrack", "Cmd+Down"), bind ("previousBar", "Cmd+Left"), bind ("nextBar", "Cmd+Right"), bind ("zoomIn", "Cmd+OemPlus"), bind ("zoomOut", "Cmd+OemMinus"), bind ("zoomFit", "Cmd+D0")])
+    prism () = Keymap(name = "Prism", shortcuts = [bind ("settings", "Cmd+OemComma"), bind ("open", "Cmd+O"), bind ("save", "Cmd+S"), bind ("render", "Cmd+R"), bind ("undo", "Cmd+Z"), bind ("redo", "Cmd+Shift+Z"), bind ("timeline", "Cmd+D1"), bind ("patch", "Cmd+D2"), bind ("routing", "Cmd+D3"), bind ("modules", "Cmd+L"), bind ("controls", "Cmd+I"), bind ("keyboard", "Cmd+K"), bind ("start", "Enter"), bind ("playSong", "Space"), bind ("stopSong", "Space"), bind ("loop", "L"), bind ("playPatch", "Shift+Space"), bind ("stopPatch", "Shift+Space"), bind ("audition", "Cmd+P"), bind (previousTrackAction, "Cmd+Up"), bind ("nextTrack", "Cmd+Down"), bind ("previousBar", "Cmd+Left"), bind ("nextBar", "Cmd+Right"), bind ("zoomIn", "Cmd+OemPlus"), bind ("zoomOut", "Cmd+OemMinus"), bind ("zoomFit", "Cmd+D0")])
 
     // Live's habits where the daw has the command: Tab changes view, the browser and detail view are on
     // Cmd+Alt, M is the computer keyboard, Home returns to the start and the arrows move through tracks and time.
-    ableton () = Keymap(name = "Ableton Style", shortcuts = [bind ("render", "Cmd+Shift+R"), bind ("timeline", "Tab"), bind ("patch", "Shift+Tab"), bind ("routing", "Cmd+Alt+M"), bind ("modules", "Cmd+Alt+B"), bind ("controls", "Cmd+Alt+L"), bind ("keyboard", "M"), bind ("start", "Home"), bind ("audition", "Alt+Space"), bind ("previousTrack", "Up"), bind ("nextTrack", "Down"), bind ("previousBar", "Left"), bind ("nextBar", "Right"), bind ("zoomIn", "OemPlus"), bind ("zoomOut", "OemMinus")])
+    ableton () = Keymap(name = "Ableton Style", shortcuts = [bind ("render", "Cmd+Shift+R"), bind ("timeline", "Tab"), bind ("patch", "Shift+Tab"), bind ("routing", "Cmd+Alt+M"), bind ("modules", "Cmd+Alt+B"), bind ("controls", "Cmd+Alt+L"), bind ("keyboard", "M"), bind ("start", "Home"), bind ("audition", "Alt+Space"), bind (previousTrackAction, "Up"), bind ("nextTrack", "Down"), bind ("previousBar", "Left"), bind ("nextBar", "Right"), bind ("zoomIn", "OemPlus"), bind ("zoomOut", "OemMinus")])
 
     // Logic's habits: single letters open the editors (P piano roll, X mixer, Y library, I inspector, B the
     // instrument's controls), Cmd+B renders the song, Return goes to the start, comma and full stop step a bar.
-    logic () = Keymap(name = "Logic Style", shortcuts = [bind ("render", "Cmd+B"), bind ("timeline", "P"), bind ("patch", "B"), bind ("routing", "X"), bind ("modules", "Y"), bind ("controls", "I"), bind ("audition", "Alt+Space"), bind ("previousTrack", "Up"), bind ("nextTrack", "Down"), bind ("previousBar", "OemComma"), bind ("nextBar", "OemPeriod"), bind ("zoomIn", "Cmd+Right"), bind ("zoomOut", "Cmd+Left"), bind ("zoomFit", "Z")])
+    logic () = Keymap(name = "Logic Style", shortcuts = [bind ("render", "Cmd+B"), bind ("timeline", "P"), bind ("patch", "B"), bind ("routing", "X"), bind ("modules", "Y"), bind ("controls", "I"), bind ("audition", "Alt+Space"), bind (previousTrackAction, "Up"), bind ("nextTrack", "Down"), bind ("previousBar", "OemComma"), bind ("nextBar", "OemPeriod"), bind ("zoomIn", "Cmd+Right"), bind ("zoomOut", "Cmd+Left"), bind ("zoomFit", "Z")])
 
     (** The keymaps the daw ships, by the names its menu shows. *)
     export names = ["Prism", "Ableton Style", "Logic Style"]

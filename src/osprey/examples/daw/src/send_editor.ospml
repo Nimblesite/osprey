@@ -4,6 +4,8 @@ namespace synth
 import ui::Ui
 import ui::Runtime
 
+selectATrackFirst = "Select a track first."
+
 (** Inspect an internal audio outlet and connect a parallel send into a declared stereo bus. *)
 module SendEditor
     key (node, outlet) = "${node}/${outlet}"
@@ -47,7 +49,7 @@ module SendEditor
 
     (** Start from the selected patch outlet, or choose any available outlet in Bus routing. *)
     export open (editor, identity) = match listGet editor.song.tracks editor.track
-        Error _ => Runtime::step (editor(message = "Select a track first."))
+        Error _ => Runtime::step (editor(message = selectATrackFirst))
         Success track => match daw::TrackPatches::patch track
             Error why => Runtime::step (editor(message = why))
             Success graph => begin (editor, track, graph, identity)
@@ -67,7 +69,7 @@ module SendEditor
             _ => Runtime::step editor
         _ => Runtime::step editor
 
-    edited (editor, draft, port, value) = Outcomes::carried (daw::Projects::required (editor.song.tracks, editor.track, "Select a track first."), \track =>
+    edited (editor, draft, port, value) = Outcomes::carried (daw::Projects::required (editor.song.tracks, editor.track, selectATrackFirst), \track =>
         identity = ui::Pick::either (draft.editingId >= 0, draft.editingId, satAdd 1 (foldList (track.sends, 0, \(highest, s) => ui::Pick::either (s.sendId > highest, s.sendId, highest))))
         route = daw::AudioSend(sendId = identity, source = port.portNode, outlet = port.portOutlet, bus = draft.targetBus, level = daw::ArrangeMath::scaled (value, 0.01), enabled = draft.sendActive)
         routes = match draft.editingId < 0
@@ -95,7 +97,7 @@ module SendEditor
     (** Remove the selected parallel send from the project. *)
     export remove editor = match editor.outputEdit
         EditingSend draft => match listGet editor.song.tracks editor.track
-            Error _ => Runtime::step (editor(message = "Select a track first."))
+            Error _ => Runtime::step (editor(message = selectATrackFirst))
             Success track => DawSession::savedTrack (editor, editor.track, daw::Projects::replaced (editor.song, editor.track, track(sends = filterList (track.sends, \s => s.sendId != draft.editingId))))
         _ => Runtime::step editor
 
@@ -178,7 +180,7 @@ module SendList
 
     (** Show each tap's origin, level, mute state and group chain alongside the canvas. *)
     export form (editor, offset) = match listGet editor.song.tracks editor.track
-        Error _ => Ui::text "Select a track first."
+        Error _ => Ui::text selectATrackFirst
         Success voice =>
             title = [Ui::styled ("PATCH SENDS", ui::Eyebrow, ui::Secondary), Ui::styled (voice.name, ui::Heading, ui::Primary)]
             actions = Ui::row [Ui::button ("Add send…", "", BeginSend(identity = -1)), Ui::button ("Close", "", CloseOutput)]
