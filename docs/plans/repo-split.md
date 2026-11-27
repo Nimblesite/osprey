@@ -89,6 +89,6 @@ These were **removed from ospreylang CI** and run only in their own repo: `build
 - [x] Point the docs here at the product websites; the specs and designs stay here
 - [ ] Add the read-only deploy keys and their `OSPREY_PACKAGES_DEPLOY_KEY` and `PERCEPTION_DEPLOY_KEY` secrets (Actions and Dependabot): every laid CI job fails until they exist
 - [ ] Bump each split repo's `osprey-version` to the first release without the moved files, so its workspace stops carrying ospreylang's old copies
-- [ ] Give each split repo the three CI phases, with its own `coverage-thresholds.json` and coverage gate
-- [ ] Run `_check_programs` over each split repo's programs in its own CI
+- [x] Give each split repo the three CI phases, with its own `coverage-thresholds.json` and coverage gate (osprey-packages 91.1%, Perception 85.4%, merged by `scripts/coverage.mjs` over the repo's own files)
+- [x] Run `_check_programs` over each split repo's programs in its own CI (the Build job narrows the index to the repo's `paths`)
 - [ ] Check each Native gate condition ([REPO-SPLIT-NATIVE-GATE]), then repeat these steps for `Nimblesite/osprey-native`, whose canary also runs `perception`'s `make canary`
