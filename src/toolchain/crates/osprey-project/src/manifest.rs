@@ -307,7 +307,10 @@ mod tests {
         assert!(package.package);
         assert_eq!((package.level(DOC), package.level(EX)), (L::Deny, L::Deny));
         assert_eq!(package.level("closing-run"), L::Warn);
-        assert_eq!((app.level("state-boundary"), package.level("state-boundary")), (L::Info, L::Info));
+        assert_eq!(
+            (app.level("state-boundary"), package.level("state-boundary")),
+            (L::Info, L::Info)
+        );
         let tuned = levels(
             "[package]\nname = \"@o/p\"\n[lints]\nundocumented-export = \"warn\"\n\
              unexampled-export = \"info\"\nclosing-run = \"allow\"\nclosing-run = \"info\"\n",
