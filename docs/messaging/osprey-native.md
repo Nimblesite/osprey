@@ -50,15 +50,15 @@ Every longer pitch expands these two sentences and never replaces them. Lead wit
 
 Position Osprey Native clearly and fairly through concrete architectural trade-offs — never vague hype:
 
-| Dimension | Osprey Native | Compose Multiplatform (CMP) | Flutter | React Native |
+| Dimension | Osprey Native | Flutter | React Native | Compose Multiplatform (CMP) |
 | --- | --- | --- | --- | --- |
-| **Rendering choice** | **Both:** real native controls (SwiftUI, WinUI, Android) **OR** GPU canvas (FerroUI / GPUI) | Primarily Skia canvas (native interop requires wrapping platform views) | Impeller / Skia canvas only (copies of platform widgets) | Native platform views only (custom GPU scenes require native modules) |
-| **Runtime & compilation** | AOT native machine code (LLVM) + WebAssembly; no JS engine, no JVM | Kotlin/Native on iOS, JVM on desktop/Android, Wasm/JS on web | Dart AOT on mobile/desktop, JS/Wasm on web | JavaScript engine (Hermes) + native bridge / JSI |
-| **Reactivity** | Compiler-derived signals (`Signal<T>`) & keyed regions from the ground up | Compose Snapshot state + compiler plugin recomposition | Widget tree rebuilds / third-party state packages | React hooks / virtual DOM / third-party signals |
-| **Language choice** | Default Osprey, ML, Python, TypeScript flavors (Dart coming soon; Kotlin considered) | Kotlin only | Dart only | JavaScript / TypeScript only |
-| **Desktop & Windows** | Native SwiftUI (macOS), native WinUI (Windows), or FerroUI GPU canvas | Skia-drawn desktop UI (JVM / Swing window host) | Custom canvas in Win32 / macOS shell | Community-maintained Windows/macOS forks |
-| **Automated UI testing** | Headless deterministic `@osprey/uitest` by accessible label + algebraic effect mocks | Compose UI test rules (platform/JVM test runner) | Widget tests + integration_test | Jest + Detox / Appium |
-| **Framework-level accessibility & AI agents** | Typed `Accessible` tree emitted by UI machines (`semantics` / `act`) + AccessKit mapping; tested by label on every build | Semantics modifiers (opt-in per composable) | Semantics widgets (opt-in) | Accessibility props per view (opt-in) |
+| **Rendering choice** | **Both:** real native controls (SwiftUI, WinUI, Android) **OR** GPU canvas (FerroUI / GPUI) | Impeller / Skia canvas only (copies of platform widgets) | Native platform views only (custom GPU scenes require native modules) | Primarily Skia canvas (native interop requires wrapping platform views) |
+| **Runtime & compilation** | AOT native machine code (LLVM) + WebAssembly; no JS engine, no JVM | Dart AOT on mobile/desktop, JS/Wasm on web | JavaScript engine (Hermes) + native bridge / JSI | Kotlin/Native on iOS, JVM on desktop/Android, Wasm/JS on web |
+| **Reactivity** | Compiler-derived signals (`Signal<T>`) & keyed regions from the ground up | Widget tree rebuilds / third-party state packages | React hooks / virtual DOM / third-party signals | Compose Snapshot state + compiler plugin recomposition |
+| **Language choice** | Default Osprey, ML, Python, TypeScript flavors (Dart coming soon; Kotlin considered) | Dart only | JavaScript / TypeScript only | Kotlin only |
+| **Desktop & Windows** | Native SwiftUI (macOS), native WinUI (Windows), or FerroUI GPU canvas | Custom canvas in Win32 / macOS shell | Community-maintained Windows/macOS forks | Skia-drawn desktop UI (JVM / Swing window host) |
+| **Automated UI testing** | Headless deterministic `@osprey/uitest` by accessible label + algebraic effect mocks | Widget tests + integration_test | Jest + Detox / Appium | Compose UI test rules (platform/JVM test runner) |
+| **Framework-level accessibility & AI agents** | Typed `Accessible` tree emitted by UI machines (`semantics` / `act`) + AccessKit mapping; tested by label on every build | Semantics widgets (opt-in) | Accessibility props per view (opt-in) | Semantics modifiers (opt-in per composable) |
 
 ### Emphasize where Osprey Native is ahead of Compose Multiplatform (CMP)
 
@@ -77,7 +77,7 @@ Name only products that run today, and state which hosts run them:
 - **Tally** — cross-platform counter running on macOS (SwiftUI), iOS (SwiftUI), Android (native views), and Windows (WinUI).
 - **Issue Inbox** — GitHub issue browser running on iOS and Android simulators/emulators.
 - **Storage, Flock, Painting, Casting** — Windows WinUI apps and macOS FerroUI / GPUI GPU-canvas apps (Flock streams 5,000 sprites at ~7 ms/frame including `update`).
-- **Prism DAW & Prism Synth** — audio studio and synthesizer rendered through the FerroUI / GPUI host on macOS (patch editor on Windows).
+- **Perception** — digital audio workstation and modular synthesizer rendered through the FerroUI / GPUI host on macOS (patch editor on Windows).
 - **Talon Bank** — shared Osprey Native app running on WebAssembly in Chromium alongside mobile hosts.
 - **Osprey Agent** — coding agent built with Osprey Native on macOS (note: not sandboxed).
 - **Proof Workbench** — mathematical proof workbench running on desktop and WebAssembly.

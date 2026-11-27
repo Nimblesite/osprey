@@ -6,7 +6,7 @@ Start every page and demo with [the Osprey Native messaging guide](../../../docs
 
 ## Brand mark & favicon
 
-The Osprey Native mark (`src/assets/brand/logo.svg` and `src/assets/brand/favicon.svg`) is a clean geometric banking wing formed from two overlapping translucent planes — **Electric Native Blue** (`#0265dc`) and **FerroUI Violet** (`#6d28d9`) — symbolizing real native controls and GPU canvas rendering flying as one.
+The Osprey Native mark (`src/assets/brand/logo.svg` and `src/assets/brand/favicon.svg`) is an original native app squircle housing a soaring osprey raptor silhouette in crisp white over a blue-to-violet gradient (`#0265dc` → `#6d28d9`) with a subtle inner screen bezel.
 
 - Deployed as SVG favicon (`/assets/brand/favicon.svg`), 32×32 PNG (`/assets/brand/favicon-32.png`), 180×180 Apple Touch Icon (`/assets/brand/apple-touch-icon.png`), and `/favicon.ico` (generated at build time from `favicon.svg`).
 - Navbar and footer render the mark beside plain-text **Osprey Native** — never a boxed text monogram.

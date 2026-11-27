@@ -57,7 +57,60 @@
   color: var(--ink-muted);
 }
 
-/* Responsive Comparison Table (@container stacked cards + sticky headers) */
+/* Single shared Table component (used by docs, blog, and comparison matrix) */
+table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--surface-raised);
+  font-size: 0.92rem;
+  text-align: start;
+}
+
+table caption {
+  padding: 1rem 1.25rem;
+  text-align: start;
+  font-weight: 700;
+  color: var(--ink);
+  border-block-end: 1px solid var(--border);
+  background-color: var(--surface-alt);
+}
+
+table th,
+table td {
+  padding: 0.9rem 1.05rem;
+  border-block-end: 1px solid var(--border);
+  vertical-align: top;
+}
+
+table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background-color: var(--surface-alt);
+}
+
+table thead th {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+table tbody tr:last-child th,
+table tbody tr:last-child td {
+  border-block-end: 0;
+}
+
+table tbody tr:hover td:not(.col-osprey) {
+  background-color: var(--surface-alt);
+}
+
 .table-wrapper {
   margin-block-start: var(--space-3);
   overflow: auto;
@@ -69,39 +122,16 @@
   container-type: inline-size;
 }
 
+.table-wrapper table {
+  border: 0;
+  border-radius: 0;
+}
+
 .compare-table {
-  inline-size: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 0.92rem;
-  text-align: start;
   --col-2: "Osprey Native";
-  --col-3: "Compose Multiplatform (CMP)";
-  --col-4: "Flutter";
-  --col-5: "React Native";
-}
-
-.compare-table caption {
-  padding: 1rem 1.25rem;
-  text-align: start;
-  font-weight: 700;
-  color: var(--ink);
-  border-block-end: 1px solid var(--border);
-  background-color: var(--surface-alt);
-}
-
-.compare-table th,
-.compare-table td {
-  padding: 0.95rem 1.1rem;
-  border-block-end: 1px solid var(--border);
-  vertical-align: top;
-}
-
-.compare-table thead {
-  position: sticky;
-  inset-block-start: 0;
-  z-index: 2;
-  background-color: var(--surface-alt);
+  --col-3: "Flutter";
+  --col-4: "React Native";
+  --col-5: "Compose Multiplatform (CMP)";
 }
 
 .compare-table thead th.col-osprey {
@@ -121,14 +151,6 @@
 
 .compare-table tbody td.col-osprey {
   background-color: var(--tint-native);
-}
-
-.compare-table tbody tr {
-  transition: background-color 150ms ease;
-}
-
-.compare-table tbody tr:hover td:not(.col-osprey) {
-  background-color: var(--surface-alt);
 }
 
 .compare-table tbody th {

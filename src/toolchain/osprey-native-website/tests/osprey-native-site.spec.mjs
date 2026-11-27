@@ -62,7 +62,14 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   for (let i = 0; i < visibleCount; i++) {
     const img = visibleImgs.nth(i);
     await img.scrollIntoViewIfNeeded();
-    const naturalWidth = await img.evaluate((el) => el.naturalWidth);
+    const naturalWidth = await img.evaluate((el) =>
+      el.complete && el.naturalWidth > 0
+        ? el.naturalWidth
+        : new Promise((resolve) => {
+            el.addEventListener("load", () => resolve(el.naturalWidth), { once: true });
+            el.addEventListener("error", () => resolve(0), { once: true });
+          })
+    );
     expect(naturalWidth, `visible image ${i} loaded`).toBeGreaterThan(0);
   }
 
@@ -77,13 +84,15 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
     await expect(videos.nth(i).locator('track[kind="captions"]')).toHaveCount(1);
   }
 
-  // 4. Dual-engine rendering mode switcher (Native Platform Controls <-> FerroUI GPU Canvas)
+  // 4. Dual-engine rendering mode switcher (Native Platform Controls <-> Custom Canvas) & no GPUI/FerroUI jargon on front page
+  await expect(page.locator("main")).not.toContainText("GPUI");
+  await expect(page.locator("main")).not.toContainText("FerroUI");
   const modeNative = page.getByRole("tab", { name: "Native Platform Controls" });
-  const modeCanvas = page.getByRole("tab", { name: "FerroUI / GPUI GPU Canvas" });
+  const modeCanvas = page.getByRole("tab", { name: "Custom Canvas" });
   await expect(modeNative).toHaveAttribute("aria-selected", "true");
   await modeCanvas.click();
   await expect(modeCanvas).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("tabpanel", { name: "FerroUI / GPUI GPU Canvas" })).toContainText("Sherbet Signal");
+  await expect(page.getByRole("tabpanel", { name: "Custom Canvas" })).toContainText("Sherbet Signal");
   await modeNative.click();
 
   // 5. Syntax flavor tabs: click + keyboard arrow navigation + hidden="until-found"
@@ -114,24 +123,10 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin" })).toContainText("Dart Flavor");
   await expect(page.getByRole("tabpanel", { name: "Dart & Kotlin" })).toContainText("Kotlin Flavor");
 
-  // 6. Interactive Accessibility Tree & @osprey/uitest Explorer
-  const controls = [
-    ["Volume", "Slidable", 'tapAt ("Volume", 0.5)'],
-    ["Position", "Slidable", 'expect (letters "00:50", true)'],
-    ["Receiver: Living Room TV", "Popup", 'tap "Receiver: Living Room TV"'],
-    ["Open file…", "Pressable", 'picked "/music/Sunroom.mp3"'],
-    ["Play", "Pressable", 'tap "Play"'],
-  ];
-
-  for (const [label, role, expectedSnippet] of controls) {
-    const btn = page.locator("#a11y-tree-list button", { hasText: label });
-    await btn.click();
-    await expect(btn).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#a11y-inspector-title")).toHaveText(`Inspected Control: ${label}`);
-    await expect(page.locator("#a11y-role")).toHaveText(role);
-    await expect(page.locator("#a11y-test-code")).toContainText(expectedSnippet);
-    await expect(page.locator("#a11y-live-region")).toContainText(label);
-  }
+  // 6. Features nav link points to real #features section & Accessibility band renders @osprey/uitest snippet
+  await expect(page.locator('nav[aria-label="Primary"] a', { hasText: "Features" })).toHaveAttribute("href", "/#features");
+  await expect(page.locator("#features h2")).toContainText("Everything you need");
+  await expect(page.locator("#accessibility")).toContainText('tapAt ("Volume", 0.5)');
 
   // 7. Theme Toggle switches cleanly between Light and Dark surfaces
   const themeBtn = page.locator("#theme-toggle");
@@ -141,17 +136,14 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
 
   await themeBtn.click(); // Dark
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-  const darkBg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  expect(lightBg).not.toBe(darkBg);
+  await expect(page.locator("body")).not.toHaveCSS("background-color", lightBg);
 
   await themeBtn.click(); // Auto
   await expect(page.locator("html")).not.toHaveAttribute("data-theme");
 
-  // 8. Comparison table & zero horizontal overflow at 1440px and 375px
-  const compareRegion = page.getByRole("region", { name: /Architectural comparison/i });
-  for (const framework of ["Osprey Native", "Compose Multiplatform (CMP)", "Flutter", "React Native"]) {
-    await expect(compareRegion).toContainText(framework);
-  }
+  // 8. Comparison table column order (Osprey Native, Flutter, React Native, CMP) & zero overflow
+  const colHeaders = await page.locator(".compare-table thead th").allTextContents();
+  expect(colHeaders).toEqual(["Capability", "Osprey Native", "Flutter", "React Native", "Compose Multiplatform (CMP)"]);
 
   for (const width of [1440, 375]) {
     await page.setViewportSize({ width, height: 900 });
@@ -162,8 +154,19 @@ test("Osprey Native website renders cleanly with flagship media, logo/favicon, a
   const theadDisplay = await page.locator(".compare-table thead").evaluate((el) => getComputedStyle(el).display);
   expect(theadDisplay).toBe("none");
 
-  // 9. Blog grid on homepage, dedicated /blog/ index, and blog article page
+  // 9. Internal /docs/ section (Get Started + Docs nav link stay on-site)
   await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(page.getByRole("link", { name: "Get Started" })).toHaveAttribute("href", "/docs/");
+  await page.locator('nav[aria-label="Primary"] a[href="/docs/"]').click();
+  await expect(page).toHaveURL(/\/docs\/$/);
+  await expect(page.locator('nav[aria-label="Primary"] a[aria-current="page"]')).toHaveText("Docs");
+  await expect(page.locator("article h1")).toHaveText("Osprey Native Documentation");
+  await page.locator('.docs-nav-list a[href="/docs/bridge/"]').click();
+  await expect(page).toHaveURL(/\/docs\/bridge\/$/);
+  await expect(page.locator("article h1")).toHaveText("The Shared-Memory Bridge");
+
+  // 10. Blog grid on homepage, dedicated /blog/ index, and blog article page
+  await page.goto(serverHandle.url, { waitUntil: "networkidle" });
   await expect(page.locator("#blog .blog-grid .blog-card")).toHaveCount(3);
 
   await page.locator('nav[aria-label="Primary"] a[href="/blog/"]').click();

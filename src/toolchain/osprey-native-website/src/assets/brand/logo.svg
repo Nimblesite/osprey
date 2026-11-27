@@ -1,19 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Osprey Native</title>
   <defs>
-    <linearGradient id="on-wing-blue" x1="6" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#0ea5e9"/>
+    <linearGradient id="on-desk" x1="6" y1="10" x2="50" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38bdf8"/>
       <stop offset="100%" stop-color="#0265dc"/>
     </linearGradient>
-    <linearGradient id="on-wing-violet" x1="18" y1="18" x2="58" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#6d28d9"/>
-      <stop offset="100%" stop-color="#0265dc"/>
+    <linearGradient id="on-phone" x1="36" y1="22" x2="58" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="16" fill="#0f172a"/>
-  <!-- Upper wing plane: Native Platform Controls -->
-  <path d="M12 31.5L36.5 11H51L23.5 34.5L12 31.5Z" fill="url(#on-wing-blue)"/>
-  <!-- Lower overlapping wing plane: FerroUI GPU Canvas -->
-  <path d="M22 36L42.5 19H53L32.5 38.5L47 52H34.5L22 36Z" fill="url(#on-wing-violet)"/>
-  <!-- Crisp intersection highlight -->
-  <path d="M22 36L32.5 38.5L38 33.2L27.5 31L22 36Z" fill="#7dd3fc" fill-opacity="0.85"/>
+  <!-- Desktop native window -->
+  <rect x="6" y="10" width="44" height="34" rx="7" fill="url(#on-desk)" stroke="#0f172a" stroke-width="3"/>
+  <path d="M7.5 19.5H48.5" stroke="#0f172a" stroke-width="2.5"/>
+  <circle cx="13" cy="14.8" r="1.7" fill="#ffffff"/>
+  <circle cx="18.5" cy="14.8" r="1.7" fill="#ffffff" fill-opacity="0.75"/>
+  <rect x="13" y="25" width="16" height="12" rx="3" fill="#ffffff" fill-opacity="0.92"/>
+  <!-- Overlapping mobile device -->
+  <rect x="35" y="21" width="23" height="35" rx="6" fill="url(#on-phone)" stroke="#0f172a" stroke-width="3"/>
+  <rect x="40" y="27" width="13" height="19" rx="2.5" fill="#ffffff" fill-opacity="0.94"/>
+  <rect x="43" y="50" width="7" height="2.4" rx="1.2" fill="#ffffff" fill-opacity="0.85"/>
 </svg>

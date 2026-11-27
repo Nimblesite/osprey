@@ -12,6 +12,7 @@ const MEDIA_PASSTHROUGH = [
   ["images/native/prism-spectral.webp", "assets/images/prism-spectral.webp"],
   ["images/native/macos-agent.png", "assets/images/macos-agent.png"],
   ["images/native/windows-storage.png", "assets/images/windows-storage.png"],
+  ["images/guides/storage-macos.png", "assets/images/storage-macos.png"],
   ["images/native/web-bank.png", "assets/images/web-bank.png"],
   ["images/native/talon-mac.webp", "assets/images/talon-mac.webp"],
   ["images/mobile/issue-inbox-ios.png", "assets/images/issue-inbox-ios.png"],

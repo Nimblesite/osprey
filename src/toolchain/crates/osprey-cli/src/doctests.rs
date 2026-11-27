@@ -122,6 +122,7 @@ fn run_example(
     } else {
         osprey_types::source_warnings(&parsed.program, &example.code, source.flavor, &source.path)
     };
+    let own = synthesize::declared(&parsed.program);
     let synthesized = synthesize::program(
         &sources.sources,
         sources.config.as_ref(),
@@ -137,8 +138,8 @@ fn run_example(
         .join("\n");
     let source = format!("{context}\n{}", example.code);
     // The package was checked whole before any example ran, so each example
-    // checks only the declarations it reaches.
-    let checked = synthesize::reachable(synthesized.checked);
+    // checks its own declarations and only the package ones it reaches.
+    let checked = synthesize::reachable(synthesized.checked, &own);
     let input = CompilationInput::doctest(name, source, checked, warnings);
     execute::check(cli, &input, synthesized.backend, example)
 }

@@ -330,12 +330,12 @@
   color: var(--code-muted);
 }
 
-/* Interactive Accessibility Tree Inspector */
+/* Accessibility & @osprey/uitest two-column band */
 .a11y-grid {
   display: grid;
   gap: var(--space-4);
   grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   margin-block-start: var(--space-4);
 }
 
@@ -345,68 +345,123 @@
   }
 }
 
-.a11y-tree-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
+.a11y-copy {
+  min-inline-size: 0;
 }
 
-.a11y-node-btn {
-  inline-size: 100%;
-  min-block-size: 2.75rem;
+/* 2+3 Bento Feature Grid (zero orphan cards, icons, metrics & ambient corner glow) */
+.bento-grid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-block-start: var(--space-4);
+}
+
+.bento-card {
+  position: relative;
+  grid-column: span 2;
+  padding: 1.65rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background-color: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.7rem;
+  transition: translate 220ms cubic-bezier(0.22, 1, 0.36, 1), border-color 200ms ease;
+}
+
+.bento-wide {
+  grid-column: span 3;
+}
+
+.bento-card:hover {
+  translate: 0 -4px;
+  border-color: color-mix(in oklab, var(--brand-native) 55%, var(--border));
+}
+
+.bento-glow-blue {
+  background-image: radial-gradient(75% 75% at 100% 0%, color-mix(in oklab, var(--brand-native) 12%, transparent), transparent 65%);
+}
+
+.bento-glow-violet {
+  background-image: radial-gradient(75% 75% at 100% 0%, color-mix(in oklab, var(--brand-canvas) 13%, transparent), transparent 65%);
+}
+
+.bento-glow-emerald {
+  background-image: radial-gradient(75% 75% at 100% 0%, color-mix(in oklab, var(--brand-signal) 13%, transparent), transparent 65%);
+}
+
+.bento-top {
+  display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-raised);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.93rem;
-  text-align: start;
-  cursor: pointer;
+  gap: 0.75rem;
+  margin-block-end: 0.2rem;
 }
 
-.a11y-node-btn[aria-pressed="true"] {
-  border-color: var(--brand-signal);
-  border-inline-start: 4px solid var(--brand-signal);
+.bento-icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 2.65rem;
+  block-size: 2.65rem;
+  border-radius: 12px;
+  background-color: var(--tint-native);
+  color: var(--brand-native);
+}
+
+.bento-icon-canvas {
+  background-color: var(--tint-canvas);
+  color: var(--brand-canvas);
+}
+
+.bento-icon-signal {
   background-color: var(--tint-signal);
-}
-
-.a11y-role-tag {
-  font-family: var(--font-mono);
-  font-size: 0.76rem;
-  font-weight: 700;
   color: var(--brand-signal);
 }
 
-.a11y-output-meta {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-alt);
-  border: 1px solid var(--border);
+.bento-tag,
+.bento-metric {
   font-family: var(--font-mono);
-  font-size: 0.82rem;
-  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 0.22rem 0.65rem;
+  border-radius: var(--radius-pill);
+  background-color: var(--surface-subtle);
+  color: var(--ink-muted);
 }
 
-.live-heading {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
+.bento-tag-signal {
+  background-color: var(--tint-signal);
+  color: var(--brand-signal);
 }
 
-.live-dot {
-  inline-size: 0.6rem;
-  block-size: 0.6rem;
-  border-radius: 50%;
-  background-color: var(--brand-signal);
-  display: inline-block;
+.bento-pills {
+  margin-block-start: auto;
+  padding-block-start: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.bento-pills span {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.22rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: var(--surface-alt);
+  color: var(--ink);
+}
+
+@media (max-width: 56rem) {
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-card,
+  .bento-wide {
+    grid-column: span 1;
+  }
 }

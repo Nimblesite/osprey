@@ -1,53 +1,149 @@
 ---
 layout: layouts/base.njk
 title: "Osprey Native"
-description: "Build real native apps for macOS, Windows, iOS, Android, and Web. Render genuine SwiftUI, WinUI, and Android controls or a FerroUI GPU canvas from one AOT codebase."
+description: "Build real native apps for macOS, Windows, iOS, Android, and Web. Render genuine SwiftUI, WinUI, and Android controls or a Custom Canvas from one AOT codebase."
 permalink: /
 ---
 {% from "blog-grid.njk" import blogGrid %}
 
 <!-- HERO: Flutter.dev / ReactNative.dev product-first stage -->
 <section class="hero-section">
-  <div class="site-container">
+  <div class="hero-ambient" aria-hidden="true">
+    <div class="hero-grid-mesh"></div>
+    <div class="hero-orb hero-orb-1"></div>
+    <div class="hero-orb hero-orb-2"></div>
+    <div class="hero-orb hero-orb-3"></div>
+    <svg class="hero-streams" viewBox="0 0 1440 620" preserveAspectRatio="none" fill="none">
+      <defs>
+        <linearGradient id="beam-blue" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#38bdf8" stop-opacity="0"/>
+          <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.75"/>
+          <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="beam-violet" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#a78bfa" stop-opacity="0"/>
+          <stop offset="50%" stop-color="#a78bfa" stop-opacity="0.7"/>
+          <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path class="stream-track" d="M-80 140 C 320 40, 560 280, 960 170 S 1340 80, 1520 190"/>
+      <path class="stream-beam stream-beam-1" stroke="url(#beam-blue)" d="M-80 140 C 320 40, 560 280, 960 170 S 1340 80, 1520 190"/>
+      <path class="stream-track" d="M-80 340 C 280 420, 620 180, 1020 310 S 1360 390, 1520 260"/>
+      <path class="stream-beam stream-beam-2" stroke="url(#beam-violet)" d="M-80 340 C 280 420, 620 180, 1020 310 S 1360 390, 1520 260"/>
+      <path class="stream-track" d="M-80 490 C 380 390, 760 540, 1140 430 S 1380 470, 1520 380"/>
+      <path class="stream-beam stream-beam-3" stroke="url(#beam-blue)" d="M-80 490 C 380 390, 760 540, 1140 430 S 1380 470, 1520 380"/>
+    </svg>
+  </div>
+  <div class="site-container hero-content">
     <div class="prose-header-center">
-      <p class="prose-eyebrow hero-animate">@osprey/native &middot; Ahead-of-time cross-platform UI</p>
-      <h1 id="main-content" tabindex="-1" class="prose-h1 hero-animate hero-delay-1">
-        Build native apps for <span class="prose-gradient">any screen.</span>
+      <h1 id="main-content" tabindex="-1" class="prose-h1 hero-animate">
+        Build native apps for <span class="prose-gradient">any device.</span>
       </h1>
-      <p class="prose-lead hero-animate hero-delay-2">
-        Render genuine SwiftUI, WinUI, and Android controls <strong>or</strong> draw straight to a pixel-identical GPU canvas
-        with FerroUI. One AOT codebase, compiler-derived signals, and enforced accessibility built for humans and AI agents.
+      <p class="prose-lead hero-animate hero-delay-1">
+        Genuine SwiftUI, WinUI, and Android controls <strong>or</strong> a Custom Canvas &mdash; draw anything you want from one ahead-of-time codebase.
       </p>
 
       <div class="btn-row hero-animate hero-delay-2">
-        <a href="https://www.ospreylang.dev/docs/osprey-native/" class="btn btn-primary">Get Started</a>
+        <a href="/docs/" class="btn btn-primary">Get Started</a>
         <a href="#videos" class="btn btn-secondary">See Real Apps</a>
       </div>
-
-      <p class="hero-platforms hero-animate hero-delay-3">macOS &middot; Windows &middot; iOS &middot; Android &middot; Web (WebAssembly) &middot; VS Code</p>
     </div>
 
     <div class="device-stage hero-animate hero-delay-3" aria-label="Flagship Osprey Native apps running on Android, macOS, and iOS">
       <figure class="device-phone">
         <img src="/assets/images/issue-inbox-android.png" alt="Issue Inbox running natively on Android with Android views" width="1080" height="2400">
-        <figcaption class="device-caption">Android &middot; Native Views</figcaption>
       </figure>
 
       <figure class="device-desktop">
-        <img src="/assets/images/macos-synth.png" alt="Prism Synth modular audio studio rendered on macOS GPU canvas" width="2304" height="1512">
-        <figcaption class="device-caption">macOS &middot; Prism Synth on FerroUI / GPUI GPU Canvas</figcaption>
+        <img src="/assets/images/macos-synth.png" alt="Perception modular audio studio rendered on macOS GPU canvas" width="2304" height="1512">
       </figure>
 
       <figure class="device-phone">
         <img src="/assets/images/issue-inbox-ios.png" alt="Issue Inbox running natively on iOS with SwiftUI" width="1179" height="2556">
-        <figcaption class="device-caption">iOS &middot; SwiftUI</figcaption>
       </figure>
     </div>
   </div>
 </section>
 
+<!-- FEATURES BENTO GRID -->
+<section id="features" class="prose-section prose-section-alt">
+  <div class="site-container">
+    <div class="prose-header-center reveal-on-scroll">
+      <p class="prose-eyebrow">Features</p>
+      <h2 class="prose-h2">Everything you need to ship fast, accessible native apps</h2>
+      <p class="prose-lead">
+        One ahead-of-time compiled codebase targeting macOS, Windows, iOS, Android, and Web &mdash; without a JavaScript engine
+        or desktop JVM.
+      </p>
+    </div>
+
+    <div class="bento-grid reveal-on-scroll">
+      <article class="bento-card bento-wide bento-glow-blue">
+        <div class="bento-top">
+          <span class="bento-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="14" height="10" rx="2"/><rect x="10" y="11" width="12" height="10" rx="2"/></svg>
+          </span>
+          <span class="bento-tag">Dual Rendering</span>
+        </div>
+        <h3 class="prose-h3">Native Controls or Custom Canvas</h3>
+        <p class="prose-body">Render genuine SwiftUI, WinUI, and Android views when you want OS fidelity, or switch to a Custom Canvas to draw anything pixel-identical everywhere.</p>
+        <div class="bento-pills" aria-hidden="true">
+          <span>SwiftUI</span><span>WinUI</span><span>Android</span><span>Custom Canvas</span>
+        </div>
+      </article>
+
+      <article class="bento-card bento-wide bento-glow-emerald">
+        <div class="bento-top">
+          <span class="bento-icon bento-icon-signal" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><path d="M5 9h14M12 9v5m-3 7 3-7 3 7"/></svg>
+          </span>
+          <span class="bento-tag bento-tag-signal">AI-Ready &amp; Headless</span>
+        </div>
+        <h3 class="prose-h3">Accessibilitymaxxing &amp; @osprey/uitest</h3>
+        <p class="prose-body">UI machines emit a typed <code>Accessible</code> tree for screen readers (AccessKit) and AI agents &mdash; tested headlessly by label in milliseconds with real pointer events.</p>
+        <div class="bento-pills" aria-hidden="true">
+          <span>AccessKit</span><span>Drive by Label</span><span>Zero Simulators</span>
+        </div>
+      </article>
+
+      <article class="bento-card bento-glow-violet">
+        <div class="bento-top">
+          <span class="bento-icon bento-icon-canvas" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </span>
+          <span class="bento-metric">0 dep arrays</span>
+        </div>
+        <h3 class="prose-h3">Signals from the Ground Up</h3>
+        <p class="prose-body">Compiler-derived <code>Signal&lt;T&gt;</code> and <code>Keyed::region</code> updates refresh only what changed &mdash; no hooks, no virtual DOM.</p>
+      </article>
+
+      <article class="bento-card bento-glow-blue">
+        <div class="bento-top">
+          <span class="bento-icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          </span>
+          <span class="bento-metric">4+ syntaxes</span>
+        </div>
+        <h3 class="prose-h3">Write in Your Syntax</h3>
+        <p class="prose-body">Code in Python, TypeScript, ML, or Default Osprey today &mdash; with Dart coming soon and Kotlin considered.</p>
+      </article>
+
+      <article class="bento-card bento-glow-violet">
+        <div class="bento-top">
+          <span class="bento-icon bento-icon-canvas" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          </span>
+          <span class="bento-metric">0 JSON</span>
+        </div>
+        <h3 class="prose-h3">Shared-Memory Bridge</h3>
+        <p class="prose-body">Fixed-width <code>ViewRow</code> (152 B) and <code>SceneShape</code> (88 B) rows cross lease-checked memory defined by <code>native.td</code>.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
 <!-- BAND 1: NOT EITHER/OR — NATIVE CONTROLS OR GPU CANVAS -->
-<section id="rendering" class="prose-section prose-section-alt">
+<section id="rendering" class="prose-section">
   <div class="site-container">
     <div class="prose-header-center">
       <p class="prose-eyebrow prose-eyebrow-canvas">Not Either / Or</p>
@@ -62,7 +158,7 @@ permalink: /
       <div style="text-align: center;">
         <div class="mode-switcher" focusgroup="tablist nomemory" role="tablist" aria-label="Choose rendering mode showcase">
           <button type="button" role="tab" class="mode-btn" id="mode-native" aria-selected="true" focusgroupstart>Native Platform Controls</button>
-          <button type="button" role="tab" class="mode-btn" id="mode-canvas" aria-selected="false">FerroUI / GPUI GPU Canvas</button>
+          <button type="button" role="tab" class="mode-btn" id="mode-canvas" aria-selected="false">Custom Canvas</button>
         </div>
       </div>
 
@@ -71,7 +167,7 @@ permalink: /
           <div class="tabpanel-inner">
             <div class="showcase-grid">
               <figure class="showcase-figure">
-                <div class="showcase-media">
+                <div class="showcase-media showcase-media-light">
                   <img src="/assets/images/windows-storage.png" alt="Storage app running in WinUI on Windows" width="1164" height="741" loading="lazy">
                 </div>
                 <figcaption>
@@ -108,31 +204,31 @@ permalink: /
             <div class="showcase-grid">
               <figure class="showcase-figure">
                 <div class="showcase-media">
-                  <img src="/assets/images/prism-spectral.webp" alt="Prism DAW spectral processor track patch rendered on FerroUI" width="2304" height="1512" loading="lazy">
+                  <img src="/assets/images/prism-spectral.webp" alt="Perception DAW spectral processor track patch rendered on Custom Canvas" width="2304" height="1512" loading="lazy">
                 </div>
                 <figcaption>
-                  <strong>Prism DAW &middot; FerroUI GPU Canvas</strong>
+                  <strong>Perception &middot; Custom Canvas</strong>
                   Modular spectral routing, custom rotary dials, and timelines drawn identically across platforms.
                 </figcaption>
               </figure>
 
               <figure class="showcase-figure">
                 <div class="showcase-media">
-                  <img src="/assets/images/chromecast-player.webp" alt="Sherbet Signal Chromecast player on GPUI" width="868" height="1114" loading="lazy">
+                  <img src="/assets/images/chromecast-player.webp" alt="Sherbet Signal Chromecast player rendered on GPU canvas" width="868" height="1114" loading="lazy">
                 </div>
                 <figcaption>
-                  <strong>Sherbet Signal &middot; GPUI UI Machine</strong>
+                  <strong>Sherbet Signal &middot; GPU Canvas UI Machine</strong>
                   Skinnable GPU artboard backed by validated parallel state machines and an enforced accessibility tree.
                 </figcaption>
               </figure>
 
               <figure class="showcase-figure">
                 <div class="showcase-media">
-                  <img src="/assets/images/macos-synth.png" alt="Prism Synth modular audio studio on macOS" width="2304" height="1512" loading="lazy">
+                  <img src="/assets/images/talon-mac.webp" alt="Talon Bank desktop application running on macOS" width="1440" height="960" loading="lazy">
                 </div>
                 <figcaption>
-                  <strong>Prism Synth &middot; Signal Flow &amp; Keyboard</strong>
-                  Live waveforms, patch cables, and synthesizer voices rendered straight on the GPU.
+                  <strong>Talon Bank &middot; macOS Desktop</strong>
+                  Real-time accounts, transfers, and journal activity sharing the exact same Osprey Native core as Web and Mobile.
                 </figcaption>
               </figure>
             </div>
@@ -150,7 +246,7 @@ permalink: /
       <p class="prose-eyebrow">Real Apps in Motion</p>
       <h2 class="prose-h2">See native speed &mdash; no mockups, no JS bundle</h2>
       <p class="prose-lead">
-        Watch real desktop apps built with <code>@osprey/native</code>: GPU-accelerated audio synthesis on FerroUI and a native
+        Watch real desktop apps built with <code>@osprey/native</code>: GPU-accelerated audio synthesis on Custom Canvas and a native
         SwiftUI coding agent on macOS.
       </p>
     </div>
@@ -162,8 +258,8 @@ permalink: /
           <track src="/assets/videos/osprey-prism-daw.en.vtt" kind="captions" srclang="en" label="English">
         </video>
         <figcaption>
-          <strong>Prism DAW &middot; FerroUI GPU Canvas</strong>
-          <span>Every voice synthesised by <code>@osprey/synth</code>; timeline, mix bus, and patches rendered through the FerroUI host.</span>
+          <strong>Perception &middot; Custom Canvas</strong>
+          <span>Every voice synthesised by <code>@osprey/synth</code>; timeline, mix bus, and patches drawn on our Custom Canvas.</span>
         </figcaption>
       </figure>
 
@@ -284,7 +380,7 @@ function update(ctx, store, msg) {
             <div class="tabpanel-inner roadmap-panel">
               <div class="roadmap-item">
                 <h3>Dart Flavor &mdash; Coming Soon</h3>
-                <p>Built for Flutter teams who want familiar Dart syntax with Osprey's type inference, algebraic effects, and choice of real native controls or FerroUI GPU canvas.</p>
+                <p>Built for Flutter teams who want familiar Dart syntax with Osprey's type inference, algebraic effects, and choice of real native controls or Custom Canvas.</p>
               </div>
               <div class="roadmap-item">
                 <h3>Kotlin Flavor &mdash; Under Consideration</h3>
@@ -313,101 +409,39 @@ function update(ctx, store, msg) {
     </div>
 
     <div class="a11y-grid">
-      <figure class="video-card">
+      <figure class="video-card reveal-on-scroll">
         <video controls preload="metadata" poster="/assets/videos/osprey-ui-testing-by-label-poster.jpg">
           <source src="/assets/videos/osprey-ui-testing-by-label.mp4" type="video/mp4">
           <track src="/assets/videos/osprey-ui-testing-by-label.en.vtt" kind="captions" srclang="en" label="English">
         </video>
         <figcaption>
           <strong>Automated UI Testing by Label &middot; @osprey/uitest</strong>
-          <span>Real pointer press/release events at control bounds, algebraic effect mocks for network/TV I/O, zero windows or simulators.</span>
+          <span>Real pointer events by accessible name, deterministic effect mocks, zero windows or simulators.</span>
         </figcaption>
       </figure>
 
-      <div class="prose-card reveal-on-scroll">
-        <h3 class="prose-h3 live-heading"><span class="live-dot" aria-hidden="true"></span> Interactive Accessibility Tree Inspector</h3>
-        <p class="prose-body">Click any control to inspect its <code>Accessible</code> record and headless <code>@osprey/uitest</code> assertion:</p>
-        <ul class="a11y-tree-list" id="a11y-tree-list">
-          <li>
-            <button type="button" class="a11y-node-btn" aria-pressed="true"
-              data-label="Play"
-              data-role="Pressable"
-              data-bounds="x: 118, y: 642, w: 72, h: 72"
-              data-value="action: cast.start"
-              data-test='tap "Play"&#10;expect (heardTypes (), "CONNECT LAUNCH ")'
-              data-accesskit="NSAccessibilityButton / UIA_ButtonControlTypeId &rarr; pointer press + release at (154, 678)">
-              <span><strong>Play</strong></span>
-              <span class="a11y-role-tag">Pressable</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="a11y-node-btn" aria-pressed="false"
-              data-label="Volume"
-              data-role="Slidable"
-              data-bounds="x: 340, y: 660, w: 180, h: 32"
-              data-value="0.50 (range 0.0..1.0)"
-              data-test='tapAt ("Volume", 0.5)&#10;expect (valueOf "Volume", 0.5)'
-              data-accesskit="NSAccessibilitySlider / UIA_SliderControlTypeId &rarr; pointer drag to 50% along bounds">
-              <span><strong>Volume</strong></span>
-              <span class="a11y-role-tag">Slidable</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="a11y-node-btn" aria-pressed="false"
-              data-label="Position"
-              data-role="Slidable"
-              data-bounds="x: 48, y: 580, w: 480, h: 28"
-              data-value="0.25 (00:50 / 03:20)"
-              data-test='tapAt ("Position", 0.25)&#10;expect (letters "00:50", true)'
-              data-accesskit="NSAccessibilitySlider &rarr; asserts actual canvas lettering drawn at 00:50">
-              <span><strong>Position</strong></span>
-              <span class="a11y-role-tag">Slidable</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="a11y-node-btn" aria-pressed="false"
-              data-label="Receiver: Living Room TV"
-              data-role="Popup"
-              data-bounds="x: 263, y: 734, w: 340, h: 48"
-              data-value="expanded: false"
-              data-test='expect (labels (), "Receiver: Living Room TV|Play|Open file…")&#10;tap "Receiver: Living Room TV"'
-              data-accesskit="NSAccessibilityPopUpButton &rarr; reveals MenuItem rows only while menu state is open">
-              <span><strong>Receiver: Living Room TV</strong></span>
-              <span class="a11y-role-tag">Popup</span>
-            </button>
-          </li>
-          <li>
-            <button type="button" class="a11y-node-btn" aria-pressed="false"
-              data-label="Open file…"
-              data-role="Pressable"
-              data-bounds="x: 214, y: 642, w: 112, h: 72"
-              data-value="triggers file picker effect"
-              data-test='tap "Open file…"&#10;picked "/music/Sunroom.mp3"&#10;expect (letters "Sunroom", true)'
-              data-accesskit="NSAccessibilityButton &rarr; handled deterministically via algebraic effect in headless tests">
-              <span><strong>Open file…</strong></span>
-              <span class="a11y-role-tag">Pressable</span>
-            </button>
-          </li>
+      <div class="a11y-copy reveal-on-scroll">
+        <ul class="prose-list">
+          <li><strong>No screenshot guessing:</strong> Every control declares its role and label in the framework, so screen readers (AccessKit) and AI agents operate your app by name.</li>
+          <li><strong>Real pointer testing, zero flakiness:</strong> <code>@osprey/uitest</code> fires real pointer press/release events at each control's bounds and verifies the actual text drawn on screen.</li>
+          <li><strong>Milliseconds, no simulator:</strong> Platform I/O sits behind typed algebraic effects, so test suites mock networks and hardware in one line.</li>
         </ul>
 
-        <h4 class="prose-h3" id="a11y-inspector-title" style="margin-block-start: 0.75rem;">Inspected Control: Play</h4>
-        <div class="a11y-output-meta">
-          <div><strong>AccessRole:</strong> <span id="a11y-role">Pressable</span></div>
-          <div><strong>Bounds:</strong> <span id="a11y-bounds">x: 118, y: 642, w: 72, h: 72</span></div>
-          <div><strong>State:</strong> <span id="a11y-value">action: cast.start</span></div>
-          <div><strong>AccessKit:</strong> <span id="a11y-bridge">NSAccessibilityButton / UIA_ButtonControlTypeId &rarr; pointer press + release at (154, 678)</span></div>
+        <div class="code-window" style="margin-block-start: 1.25rem;">
+          <p class="code-meta-bar">Casting player end-to-end test (@osprey/uitest)</p>
+<pre><code>tap "Open file…"
+picked "/music/Sunroom.mp3"
+expect (letters "Sunroom", true)
+tap "Play"
+tapAt ("Volume", 0.5)
+expect (valueOf "Volume", 0.5)</code></pre>
         </div>
-        <div class="code-window" style="box-shadow: none; border-radius: var(--radius-sm);">
-<pre><code id="a11y-test-code">tap "Play"
-expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
-        </div>
-        <div class="visually-hidden" aria-live="polite" id="a11y-live-region"></div>
       </div>
     </div>
 
     <div class="prose-callout">
       <p>
-        <strong>Current accessibility scope:</strong> The GPUI host maps the UI-machine tree to AccessKit (NSAccessibility on macOS,
+        <strong>Current accessibility scope:</strong> The GPU desktop host maps the UI-machine tree to AccessKit (NSAccessibility on macOS,
         UI Automation on Windows, AT-SPI on Linux) today. Mapping the same tree on WinUI, SwiftUI, and VS Code hosts, emitting it
         from direct view code, and shipping an external MCP server over <code>semantics</code>/<code>act</code> remain active delivery work.
       </p>
@@ -441,71 +475,71 @@ expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
       <div class="spectrum-card spectrum-card-winner">
         <span class="spectrum-kicker">&#10003; Both Worlds &middot; Zero JS &middot; Zero JVM</span>
         <strong>Osprey Native</strong>
-        <p>Choose genuine SwiftUI, WinUI, and Android views <strong>or</strong> FerroUI's GPU canvas &mdash; one AOT codebase, signals, and enforced accessibility.</p>
+        <p>Choose genuine SwiftUI, WinUI, and Android views <strong>or</strong> a Custom Canvas &mdash; one AOT codebase, signals, and enforced accessibility.</p>
       </div>
     </div>
 
     <div tabindex="0" role="region" aria-labelledby="compare-caption" class="table-wrapper reveal-on-scroll">
       <table class="compare-table">
-        <caption id="compare-caption">Architectural comparison: Osprey Native vs. Compose Multiplatform (CMP), Flutter, and React Native</caption>
+        <caption id="compare-caption">Architectural comparison: Osprey Native vs. Flutter, React Native, and Compose Multiplatform (CMP)</caption>
         <thead>
           <tr>
             <th scope="col">Capability</th>
             <th scope="col" class="col-osprey">Osprey Native</th>
-            <th scope="col">Compose Multiplatform (CMP)</th>
             <th scope="col">Flutter</th>
             <th scope="col">React Native</th>
+            <th scope="col">Compose Multiplatform (CMP)</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <th scope="row">Rendering model</th>
-            <td class="col-osprey"><span class="cell-chip">&#10003; Both Modes</span><br>Real native controls (SwiftUI, WinUI, Android) <strong>OR</strong> FerroUI / GPUI GPU canvas</td>
-            <td>Skia canvas for shared UI (native views require platform interop wrappers)</td>
+            <td class="col-osprey"><span class="cell-chip">&#10003; Both Modes</span><br>Real native controls (SwiftUI, WinUI, Android) <strong>OR</strong> Custom Canvas (draw anything, identical everywhere)</td>
             <td>Impeller / Skia canvas only (framework-drawn widget copies)</td>
             <td>Native platform views only (custom GPU scenes need native modules)</td>
+            <td>Skia canvas for shared UI (native views require platform interop wrappers)</td>
           </tr>
           <tr>
             <th scope="row">Runtime &amp; compilation</th>
             <td class="col-osprey"><span class="cell-chip">&#10003; AOT Native</span><br>LLVM machine code everywhere + WebAssembly on web; no JS engine, no JVM</td>
-            <td>Kotlin/Native on iOS, JVM on desktop &amp; Android, Wasm/JS on web</td>
             <td>Dart AOT on mobile &amp; desktop, JS/Wasm on web</td>
             <td>JavaScript engine (Hermes) + JSI / native bridge</td>
+            <td>Kotlin/Native on iOS, JVM on desktop &amp; Android, Wasm/JS on web</td>
           </tr>
           <tr>
             <th scope="row">Reactivity</th>
             <td class="col-osprey"><span class="cell-chip">&#10003; Compiler Signals</span><br>Built-in <code>Signal&lt;T&gt;</code> &amp; keyed regions from the ground up</td>
-            <td>Compose Snapshot state + compiler recomposition</td>
             <td>Widget tree rebuilds + third-party state packages</td>
             <td>React hooks + virtual DOM reconciliation</td>
+            <td>Compose Snapshot state + compiler recomposition</td>
           </tr>
           <tr>
             <th scope="row">Language &amp; syntax</th>
             <td class="col-osprey"><span class="cell-chip">&#10003; Multi-Flavor</span><br>Default Osprey, ML, Python, TypeScript flavors (Dart coming soon; Kotlin considered)</td>
-            <td>Kotlin only</td>
             <td>Dart only</td>
             <td>JavaScript / TypeScript only</td>
+            <td>Kotlin only</td>
           </tr>
           <tr>
             <th scope="row">Desktop &amp; Windows</th>
-            <td class="col-osprey"><span class="cell-chip">&#10003; First-Class OS</span><br>Genuine SwiftUI (macOS), genuine WinUI MSIX (Windows), or FerroUI GPU canvas</td>
-            <td>Skia drawn inside a JVM / Swing desktop window</td>
+            <td class="col-osprey"><span class="cell-chip">&#10003; First-Class OS</span><br>Genuine SwiftUI (macOS), genuine WinUI MSIX (Windows), or Custom Canvas</td>
             <td>Custom canvas inside Win32 / macOS shell</td>
             <td>Community-maintained Windows &amp; macOS forks</td>
+            <td>Skia drawn inside a JVM / Swing desktop window</td>
           </tr>
           <tr>
             <th scope="row">Accessibility &amp; AI agents</th>
             <td class="col-osprey"><span class="cell-chip">&#10003; Enforced Tree</span><br>Typed <code>Accessible</code> tree (<code>semantics</code> / <code>act</code>) + AccessKit; tested by label on every build</td>
-            <td>Opt-in semantics modifiers per composable</td>
             <td>Opt-in <code>Semantics</code> widgets</td>
             <td>Opt-in accessibility props per view</td>
+            <td>Opt-in semantics modifiers per composable</td>
           </tr>
           <tr>
             <th scope="row">Automated UI testing</th>
             <td class="col-osprey"><span class="cell-chip">&#10003; Headless &amp; Fast</span><br><code>@osprey/uitest</code> by accessible label + algebraic effect mocks (no window/simulator)</td>
-            <td>Compose UI test rules (JVM / platform runner)</td>
             <td>Widget tests + <code>integration_test</code></td>
             <td>Jest + Detox / Appium</td>
+            <td>Compose UI test rules (JVM / platform runner)</td>
           </tr>
         </tbody>
       </table>
@@ -521,7 +555,7 @@ expect (heardTypes (), "CONNECT LAUNCH ")</code></pre>
           <h4 class="prose-h3">True native controls on Apple &amp; Windows</h4>
           <p class="prose-body">
             CMP paints shared UI onto Skia and hosts desktop in a JVM/Swing shell. Osprey Native renders real SwiftUI on macOS/iOS
-            and real WinUI on Windows &mdash; or switches to FerroUI's GPU canvas whenever you want identical pixels.
+            and real WinUI on Windows &mdash; or switches to Custom Canvas whenever you want identical pixels.
           </p>
         </article>
         <article class="prose-card cmp-card">

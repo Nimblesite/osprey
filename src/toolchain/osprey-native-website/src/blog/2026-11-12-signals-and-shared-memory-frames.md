@@ -10,10 +10,10 @@ category: "Signals & Runtime"
 badgeClass: "badge-canvas"
 readingTime: 5
 image: /assets/images/prism-spectral.webp
-imageAlt: "Prism DAW spectral processor patch rendered on FerroUI GPU canvas"
+imageAlt: "Perception DAW spectral processor patch rendered on FerroUI GPU canvas"
 imageWidth: 2304
 imageHeight: 1512
-imageCaption: "Prism DAW on FerroUI: compiler-derived signals update only changed regions while streaming fixed-width rows across the shared-memory bridge."
+imageCaption: "Perception on FerroUI: compiler-derived signals update only changed regions while streaming fixed-width rows across the shared-memory bridge."
 ---
 
 Most UI frameworks bolt reactivity onto a general-purpose runtime with hook rules, dependency arrays, or virtual DOM reconciliation. Osprey Native builds reactivity into the compiler and pairs it with a zero-serialization binary boundary.

@@ -67,32 +67,7 @@
     });
   }
 
-  // --- 2. Interactive Accessibility Tree & @osprey/uitest Explorer ---
-  const nodeButtons = Array.from(document.querySelectorAll(".a11y-node-btn"));
-  const titleEl = document.getElementById("a11y-inspector-title");
-  const roleEl = document.getElementById("a11y-role");
-  const boundsEl = document.getElementById("a11y-bounds");
-  const valueEl = document.getElementById("a11y-value");
-  const bridgeEl = document.getElementById("a11y-bridge");
-  const testCodeEl = document.getElementById("a11y-test-code");
-  const liveRegion = document.getElementById("a11y-live-region");
-
-  nodeButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      nodeButtons.forEach((other) => other.setAttribute("aria-pressed", String(other === btn)));
-      const label = btn.dataset.label || "";
-      const role = btn.dataset.role || "";
-      if (titleEl) titleEl.textContent = `Inspected Control: ${label}`;
-      if (roleEl) roleEl.textContent = role;
-      if (boundsEl) boundsEl.textContent = btn.dataset.bounds || "";
-      if (valueEl) valueEl.textContent = btn.dataset.value || "";
-      if (bridgeEl) bridgeEl.textContent = btn.dataset.accesskit || "";
-      if (testCodeEl) testCodeEl.textContent = btn.dataset.test || "";
-      if (liveRegion) liveRegion.textContent = `Selected ${label} (${role}) in accessibility tree inspector.`;
-    });
-  });
-
-  // --- 3. Light / Dark / Auto Theme Toggle ---
+  // --- 2. Light / Dark / Auto Theme Toggle ---
   const toggleBtn = document.getElementById("theme-toggle");
   const themeLabel = document.getElementById("theme-label");
   const modes = ["auto", "light", "dark"];
