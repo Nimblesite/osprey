@@ -9,7 +9,16 @@ module PublicCatalog {
     export fn field(doc, key) = jsonField(doc, key) ?: JsonNull
     export fn text(doc, key) = jsonText(field(doc, key)) ?: ""
     fn validWarning(item) = trim(jsonText(item) ?: "") != ""
-    fn validEntry(item) = exact(item, 3) && match Names::parse(text(item, "key")) {
+    export fn number(doc, key) = jsonInt(field(doc, key)) ?: 0
+    fn validRelease(item) = exact(item, 3) && number(item, "epoch") > 0 && number(item, "ordinal") > 0 && match Digests::parse(text(item, "digest")) {
+        Success => true
+        Error => false
+    }
+    fn validReleases(item) = match field(item, "releases") {
+        JsonArray(items) => !isEmpty(items) && foldList(items, true, fn(ok, r) => ok && validRelease(r))
+        _ => false
+    }
+    export fn validEntry(item) = exact(item, 4) && validReleases(item) && match Names::parse(text(item, "key")) {
         Error => false
         Success => trim(text(item, "summary")) != "" && match field(item, "warnings") {
             JsonArray(values) => foldList(values, true, fn(ok, value) => ok && validWarning(value))

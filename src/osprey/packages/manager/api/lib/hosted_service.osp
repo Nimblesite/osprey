@@ -67,21 +67,33 @@ module HostedService {
         let cors = if origin == "" { "" } else { browserHeaders(origin) }
         if path == "/v1/ready" { problem(404, "api.not-found") }
         else if method == "OPTIONS" { preflight(headers, origin) }
-        else if method == "GET" && path == "/v1/packages" { catalogResponse(catalog(), cors) }
+        else if method == "GET" && (path == "/v1/packages" || startsWith(path, "/v1/packages/")) { catalogResponse(catalog(), path, cors) }
         else if method == "GET" && path == "/v1/auth/session" && !hasCredential(headers, policy) {
             replyWith(401, "application/problem+json", "{\"code\":\"auth.session-required\",\"status\":401}", cors)
         } else { unavailable(cors) }
     }
 
-    fn catalogResponse(result: Result<string, string>, cors) = match result {
+    fn catalogResponse(result: Result<string, string>, path, cors) = match result {
         Success { value } => match PublicCatalog::decode(value) {
-            Success => match andThen(Json::parse(value), Canonical::serialize) {
-                Success { value } => replyWith(200, "application/json", value, cors)
+            Success => match Json::parse(value) {
+                Success { value } => catalogDocument(value, path, cors)
                 Error => unavailable(cors)
             }
             Error => unavailable(cors)
         }
         Error => unavailable(cors)
+    }
+
+    fn jsonReply(doc, cors) = match Canonical::serialize(doc) {
+        Success { value } => replyWith(200, "application/json", value, cors)
+        Error => unavailable(cors)
+    }
+
+    fn catalogDocument(doc, path, cors) = if path == "/v1/packages" { jsonReply(doc, cors) } else {
+        match listGet(filterList(JsonRead::items(JsonRead::field(doc, "packages")), fn(item) => "/v1/packages/" + field(item, "key") == path), 0) {
+            Success { value } => jsonReply(value, cors)
+            Error => replyWith(404, "application/problem+json", "{\"code\":\"catalog.unknown-package\",\"status\":404}", cors)
+        }
     }
 
     fn unavailable(cors) = replyWith(503, "application/problem+json", "{\"code\":\"registry.not-ready\",\"status\":503}", cors)

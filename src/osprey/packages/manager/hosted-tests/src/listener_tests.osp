@@ -35,7 +35,7 @@ module ListenerTests {
         ])
     }
 
-    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
+    let projection = "{\"packages\":[{\"key\":\"@atlas/net\",\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"ordinal\":1}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
 
     fn requests(port) = {
         let public = fetch(port, "/v1/packages", "")

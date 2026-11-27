@@ -23,14 +23,23 @@ module HostedCatalog {
         let found = filterList(items, fn(item) => matches(item, terms))
         if isEmpty(found) { "<p>No matching packages.</p>" } else { join(mapList(found, card), "") }
     }
-    fn results(items, path, query) = if path == "/" { browse(items, query) } else {
-        match listGet(filterList(items, fn(item) => path == "/packages/" + PublicCatalog::text(item, "key") + "/"), 0) {
-            Error => "<p>Package not found.</p>"
-            Success { value } => card(value)
-        }
+    fn release(item) = {
+        let epoch = PublicCatalog::number(item, "epoch")
+        let ordinal = PublicCatalog::number(item, "ordinal")
+        let digest = PublicCatalog::text(item, "digest")
+        "<article class=\"prose-release\"><h3>e${epoch}.r${ordinal}</h3><code>${digest}</code></article>"
     }
-    export fn render(path, query, body) = match PublicCatalog::decode(body) {
-        Success { value } => results(value, path, query)
-        Error => ""
+    fn detail(item, path) = {
+        let key = PublicCatalog::text(item, "key")
+        let summary = Shell::escape(PublicCatalog::text(item, "summary"))
+        let releases = match PublicCatalog::field(item, "releases") { JsonArray(items) => join(mapList(items, release), "") _ => "" }
+        if PublicCatalog::validEntry(item) && path == "/packages/" + key + "/" {
+            "<header class=\"prose-cover\"><a href=\"/\">← Packages</a><h1>${key}</h1><p>${summary}</p></header><div class=\"prose-columns\"><section class=\"prose-releases\"><h2>Releases</h2>${releases}</section><aside class=\"prose-facts\"><h2>Security warnings</h2>" + warningList(item) + "</aside></div>"
+        } else { "" }
+    }
+    export fn render(path, query, body) = if path == "/" {
+        match PublicCatalog::decode(body) { Success { value } => browse(value, query) Error => "" }
+    } else {
+        match jsonDecode(body) { Success { value } => detail(value, path) Error => "" }
     }
 }

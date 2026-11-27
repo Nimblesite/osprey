@@ -91,7 +91,7 @@ fn publicCatalog() = {
     ])
 }
 
-let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
+let catalogRow = "{\"packages\":[{\"key\":\"@atlas/net\",\"releases\":[{\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":1,\"ordinal\":1}],\"summary\":\"HTTP tools\",\"warnings\":[\"Network access\"]}]}"
 
 fn fixtureCatalog() = {
     let result = onFixture("printf '%s' " + Host::shellWord(Database::catalogScript()) + " | psql -XqAt -v ON_ERROR_STOP=1 -U registry_catalog_reader")

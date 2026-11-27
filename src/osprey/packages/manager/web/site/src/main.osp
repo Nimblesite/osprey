@@ -18,6 +18,12 @@ fn catalogAdapter(origin) = {
     "<script type=\"module\" src=\"/${adapter}\" data-catalog=\"${origin}/v1/packages\" data-host=\"/${host}\" data-guest=\"/${guest}\"></script>"
 }
 
+fn hostedPackage() = {
+    let origin = trim(input())
+    let adapter = catalogAdapter(origin)
+    Shell::withEscapedTitle("Package · Osprey Packages", "<main><p id=\"catalog-status\" role=\"status\" data-missing=\"Package not found.\" data-error=\"Package details are unavailable.\">Loading package…</p><div id=\"package-details\"></div>${adapter}</main>")
+}
+
 fn localFilter() = {
     let adapter = trim(input())
     let host = trim(input())
@@ -122,6 +128,7 @@ fn main() = print(match trim(input()) {
         let docs = if trim(input()) == "generated" { "<a href=\"${version}/docs/api/index.html\">API documentation</a>" } else { "API documentation unavailable for this release" }
         "<article id=\"${version}\" class=\"prose-release\"><h3>${version}</h3><a class=\"prose-download\" download href=\"/sources/${digest}.json\">Download ${version}</a><p>${docs}</p><p>Published by ${publisher}</p><code>${digest}</code></article>"
     }
+    "hosted-package" => hostedPackage()
     "hosted-results" => {
         let path = input()
         let query = input()
