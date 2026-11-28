@@ -27,6 +27,4 @@ An organization owns a package. One administrator chooses its publishers. A publ
 
 A release follows its repository binding, intent, challenge and signed authorization. A client verifies its source digest, signed status, transparency log and witness receipts before activating it. Build plans and locks record the exact inputs needed to reproduce it. The final section describes assessment and discovery. See the [model invariants](0031-PackageDomainInvariants.md).
 
-[Read the canonical typeDiagram](../../../src/toolchain/schemas/package-registry.td).
-
-<!-- registry-model -->
+The canonical typeDiagram is [`package-registry.td`](https://github.com/Nimblesite/osprey-packages/blob/main/src/toolchain/schemas/package-registry.td) in the [package manager](https://nimblesite.github.io/osprey-packages/)'s repository.

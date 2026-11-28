@@ -1,9 +1,0 @@
-namespace demo_report;
-import demo_maths::Maths
-import demo_greeting::Greeting
-
-/// One line that uses both dependencies.
-module Report {
-    /// A greeting for `name` followed by the square and cube of `n`.
-    export fn line(name, n) = "${Greeting::hello(name)} ${n} squared is ${Maths::square(n)}, cubed is ${Maths::cube(n)}."
-}

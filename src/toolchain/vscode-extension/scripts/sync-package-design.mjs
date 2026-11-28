@@ -1,4 +1,5 @@
-// Build the package workspace assets from the registry's canonical mark and design tokens.
+// Build the package workspace assets from the registry's canonical mark and design tokens, read from
+// the package manager `make downstream` lays: a CI test fixture, never shipped [REPO-SPLIT].
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const media = new URL("../media/", import.meta.url);

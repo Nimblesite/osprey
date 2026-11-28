@@ -4,9 +4,9 @@
 
 | Question | Answer |
 |---|---|
-| Split now? | **Yes, two of the three now.** |
-| How many now? | **2: the Package manager and Perception.** Osprey Native stays until the conditions in [REPO-SPLIT-NATIVE-GATE] are met. |
-| Submodules? | **Yes, for now, one way only:** ospreylang mounts each split repo as a submodule **at its current path**. Split repos never add ospreylang as a submodule. Submodules are removed in [REPO-SPLIT-EXIT]. |
+| Split now? | **Yes, two of the three: done.** |
+| How many now? | **2: the Package manager ([Nimblesite/osprey-packages](https://nimblesite.github.io/osprey-packages/)) and Perception ([Nimblesite/perception](https://nimblesite.github.io/perception/)).** Both are public. Osprey Native stays until the conditions in [REPO-SPLIT-NATIVE-GATE] are met. |
+| Submodules? | **No.** Only CI tests read the split repos: `make downstream` clones each one's `main` and lays its files over this checkout at their original, gitignored paths ([REPO-SPLIT-MAIN]). Nothing else here depends on them. |
 
 ### Goals [REPO-SPLIT-GOALS]
 
@@ -32,53 +32,68 @@ Native is small (about 11k lines), so splitting it now would barely cut the repo
 
 Until then, ospreylang CI covers Native. Native's rule that it must pass the Perception canary is met by ospreylang running that canary.
 
-### Why submodules, and only one way [REPO-SPLIT-SUBMODULE]
+### Why CI tests clone main, not submodules [REPO-SPLIT-MAIN]
 
-- **No path changes.** `daw/osprey.toml` (`../../packages/native/host` and the others), `scripts/make/apps.mk` (`UI_SUITES`, the `--smoke` loop), `winui.yml` and the targets Makefiles keep working as they are.
-- **The pin is atomic.** The submodule SHA records exactly which commit ospreylang tests against. A compiler PR that breaks a canary fixes the split repo and bumps the pointer in the same PR.
-- **No dependency cycle.** Split repos pin ospreylang by **release tag** in `osprey-version`. Their CI downloads that release's `osprey` binary and checks out the same tag for the stdlib package sources. It never builds the compiler, so it costs no compiler build minutes.
+- **No path changes.** Each split repo keeps every file at the path it had here. `make downstream` (`scripts/ci/downstream.sh`) lays those files over this checkout from each repo's `main`. The paths are gitignored, so `daw/osprey.toml`'s `../../packages/native/host` source roots and the compiler-side tests resolve as before.
+- **Tests read main.** There is no pins file. Every CI run tests the compiler against each split repo's `main`, so a split repo's change is checked against the compiler at once, and nothing in ospreylang needs a bump.
+- **Only tests depend on them.** The build, the releases, the VSIX and the website read nothing from a split repo. Only the canaries, the compiler-side tests, the extension's package tests, the FFT proof and the Windows Prism self-test lay them.
+- **No dependency cycle.** Each split repo pins ospreylang by **release tag** in `osprey-version`. Its `scripts/workspace.sh` checks that tag out and lays the repo over it, the reverse of `make downstream`, so its recipes run unchanged. Perception hashes with the package manager's `bytes.osp` and `sha256.osp`, which its `osprey-version` tag (v0.33.0) still carries, so neither split repo reads the other.
+- **No keys.** No deploy key, token or secret reads a split repo: all three repos are public, so every checkout is a plain one.
 
 ## Repos [REPO-SPLIT-REPOS]
 
-Each repo follows the AgentPMO layout and Shipwright deployment. Each keeps the three CI phases (build+check, test with coverage, coverage gate) with its own `coverage-thresholds.json`, and has its own `make ci`. History is kept with `git filter-repo --path <p> --path <p2>`.
+Each repo keeps its history (`git filter-repo --path`), its own CI and its own GitHub Pages site. The specs, designs and messaging docs stay here and link to the product sites.
 
-| Repo | Moves in | Messaging doc | Website |
+| Repo | Moved in | Make targets | Website |
 |---|---|---|---|
-| `Nimblesite/osprey-packages` | `src/osprey/packages/manager/`, `scripts/packages/`, `scripts/ci/ci-registry-contract-tests.mjs`, `src/toolchain/schemas/package-registry.td`, `docs/specs/ecosystem/0030-*`, `0044-*`, `docs/plans/0020-package-manager.md`, `src/toolchain/website/src/assets/images/packages/` | **New** `docs/messaging/osprey-packages.md` (written in the split PR; none exists today) | `manager/web/site` (the registry site) |
-| `Nimblesite/perception` | `src/osprey/examples/daw/` (including `website/`, `PRISM.md`), `src/toolchain/hosts/synth_vst/` (moves to its own Cargo workspace), `docs/specs/synth/Perception.md`, `docs/designs/prism-timeline/` | `docs/messaging/perception messaging.md` → `docs/messaging/perception.md` | `daw/website` |
-| `Nimblesite/osprey-native` *(later)* | `src/osprey/packages/native/`, `src/toolchain/osprey-native-website/`, `src/toolchain/schemas/native.td`, the Native hosts | `docs/messaging/osprey-native.md` | `osprey-native-website` |
+| `Nimblesite/osprey-packages` | `src/osprey/packages/manager/`, `src/toolchain/schemas/package-registry.td`, `src/toolchain/hosts/web/src/registry-{form,catalog}.mjs`, `scripts/ci/ci-registry-contract-tests.mjs`, the registry scripts in `scripts/packages/` | `scripts/make/osprey-packages.mk` | <https://nimblesite.github.io/osprey-packages/> (the registry site, `registry-pages`) |
+| `Nimblesite/perception` | `src/osprey/examples/daw/`, `src/toolchain/hosts/synth_vst/`, `src/toolchain/hosts/ferroui/` (only the daw uses it), `scripts/make/daw-{profile,video}.sh`, `scripts/make/daw-playback-rate.mjs`, `src/toolchain/targets/macos/tests/prism-icon.sh` | `scripts/make/perception.mk` | <https://nimblesite.github.io/perception/> (`daw/website`) |
+| `Nimblesite/osprey-native` *(later)* | `src/osprey/packages/native/`, `src/toolchain/osprey-native-website/`, `src/toolchain/schemas/native.td`, the Native hosts | | `osprey-native-website` |
 
-`@osprey/synth` and `@osprey/signal_flow` stay in ospreylang as stdlib packages, because synth must never depend on Perception ([DAW]). The ospreylang website keeps one page per product that links out, and the deploy pages for the moved sites are deleted from `deploy-pages.yml`.
+`@osprey/synth` and `@osprey/signal_flow` stay here as standard packages, because synth must never depend on Perception ([DAW]). The package manager is osprey-packages' to ship: neither the releases nor the VSIX carry `osprey-pkg`, `osprey-registry` or the package workspace. The extension reads them from `osprey.packages.frontendPath`, `osprey.packages.appPath` and `osprey.packages.localRegistry.serverPath`. The package hashing test, the local registry stager and `registry-serve` moved to osprey-packages. `daw-clicks.swift` and `sample-attribution.py` moved to Perception.
+
+**Moved, verified** against pre-split `main` (edea7658c): osprey-packages holds all 377 files its `paths` own, and Perception all 186 (now 188 with the two tools). None is still tracked here. The only content changes are the split's own edits: the registry contract test, Perception's Pages path prefix and each repo's new make file.
 
 ## Canary tests ospreylang keeps [REPO-SPLIT-CANARY]
 
-Each split repo exposes **one** make target, `make canary`, containing its major end-to-end tests. Ospreylang (and later osprey-native) calls that target and never copies its recipe. Canary jobs check out only their own submodule (`git submodule update --init <path>`). Every other job uses `submodules: false`.
+Each split repo has **one** `make canary` target holding its major end-to-end tests. Ospreylang calls it (`make _canaries`) and never copies its recipe.
 
-| Repo | `make canary`, on Linux, macOS and Windows |
+| Repo | `make canary` |
 |---|---|
-| osprey-packages | `manager/e2e` consumer flow (`osprey init → add → install → build → run` against `sample-registry`) |
-| perception | `daw/test` headless suite (`_app-suite`), `--smoke` launch with a golden screenshot comparison, and the Windows `synth.dll` build plus WinUI smoke (today's `winui.yml` steps) |
+| osprey-packages | The fixture and schema suite, the package frontend suite and the `e2e` consumer flow against `sample-registry` |
+| perception | The Prism synth's host-free journeys, the song renderer under ARC and, on macOS, the daw replaying `smoke.jsonl` in the GPUI host |
 
-These are **removed from ospreylang CI** and run only in their own repo: `build-registry-hosted`, `test-registry-gc`, `test-registry-arc`, `test-registry-hosted`, the auth, database, governance and hosted test suites, `daw-profile`, `daw-video`, `daw-playback-rate`, the `synth-vst-*` targets, device builds, and track renders. `_check_programs` ([CI-PROGRAMS-COMPILE]) for the moved programs also moves to their repos.
+ospreylang CI runs, on every build, from each split repo's `main`:
+
+- `test-canary` (Linux): both canaries, the package-consumers contract, and every project built on `@osprey/synth`, the laid daw included.
+- `test-apple`'s Perception part: both canaries on macOS, so the GPUI smoke runs.
+- `ci-windows`: both canaries on Windows (`make _canaries` under MSYS2).
+- `winui`: Prism's `synth.dll` built and self-tested on Windows with the other apps.
+- `test-rust`: the compiler-side tests that use the split code, unchanged: the editor's wasm boundary build, the daw song renders, and the ambient builtin inventory against the registry's `surface.osp`.
+- `build` and `test-extension`: the package client, registry server, package workspace and registry design, staged only for the extension's package tests (`_vsix_bundle_packages`, `_vsix_package_design`, `VSIX_PACKAGES=1`).
+- `test-proof`: the production FFT proof over the daw's `arrange_math.ospml`.
+
+These were **removed from ospreylang CI** and run only in their own repo: `build-registry-hosted`, `test-registry-gc`, `test-registry-arc` and `test-registry-hosted` (now osprey-packages' `build`, `test` and `test-hosted`), the GPUI DAW part, and the daw, Prism and VST targets in the platform Makefiles.
 
 ## Cross-repo breaks [REPO-SPLIT-BREAKS]
 
-- **An ospreylang PR turns a canary red:** fix it in the split repo first, then bump the submodule pointer in the ospreylang PR. Merging red is never allowed.
+- **An ospreylang PR turns a canary red:** fix it on the split repo's `main` first, then rerun the ospreylang PR. Merging red is never allowed.
 - **A split repo needs a compiler fix:** fix it in ospreylang, release it, then bump `osprey-version` in the split repo.
 - `osprey-version` is bumped by hand on each ospreylang release. There is no scheduled bump workflow, which saves spend.
 
-## Exit from submodules [REPO-SPLIT-EXIT]
-
-Each submodule is removed from ospreylang once its repo uses only registry dependencies (no `../../packages` paths). The canary job then checks out the split repo at the SHA recorded in `ci/downstream.json`.
-
 ## Checklist
 
-- [ ] Write `docs/messaging/osprey-packages.md`
-- [ ] Create `Nimblesite/osprey-packages` with filter-repo history, its own CI, Supabase/GCP deploy and registry site
-- [ ] Add a `make canary` target to osprey-packages
-- [ ] In ospreylang, replace `packages/manager` with a submodule, delete the registry jobs from `ci.yml`, and add the canary job on Linux, macOS and Windows
-- [ ] Create `Nimblesite/perception` with filter-repo history, its own CI and website, and the `synth_vst` workspace
-- [ ] Add a `make canary` target to perception
-- [ ] In ospreylang, replace `examples/daw` with a submodule, trim `UI_SUITES`, the smoke loop and `winui.yml` to the canary, and delete the moved targets from the targets Makefiles
-- [ ] Move the messaging docs and specs, and fix every link and spec ID cross-reference
+- [x] Create `Nimblesite/osprey-packages` (private) with filter-repo history, its own CI, Git LFS and the registry site on GitHub Pages
+- [x] Add a `make canary` target to osprey-packages
+- [x] Create `Nimblesite/perception` (private) with filter-repo history, its own CI, Git LFS (135 objects) and its website on GitHub Pages
+- [x] Add a `make canary` target to perception
+- [x] In ospreylang, delete the moved files, add `make downstream` (each repo's `main`) and `make canary`, delete the registry jobs, and run the canaries on Linux, macOS and Windows
+- [x] Point the docs here at the product websites; the specs and designs stay here
+- [x] Both split repos build, test and gate coverage keyless: Perception reads no private repository
+- [x] Make both repos public
+- [x] Nothing but CI tests depends on the split repos: releases and the VSIX ship no package manager, and the website links instead of copying
+- [ ] Merge `repo-split` (PR #439) on green CI
+- [ ] Bump each split repo's `osprey-version` to the first release without the moved files, so its workspace stops carrying ospreylang's old copies; Perception then names `Nimblesite/osprey-packages` in `requires` again for `bytes.osp` and `sha256.osp`, read keyless now that it is public
+- [x] Give each split repo the three CI phases, with its own `coverage-thresholds.json` and coverage gate (osprey-packages 91.1%, Perception 85.4%, merged by `scripts/coverage.mjs` over the repo's own files)
+- [x] Run `_check_programs` over each split repo's programs in its own CI (the Build job narrows the index to the repo's `paths`)
 - [ ] Check each Native gate condition ([REPO-SPLIT-NATIVE-GATE]), then repeat these steps for `Nimblesite/osprey-native`, whose canary also runs `perception`'s `make canary`

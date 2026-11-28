@@ -186,8 +186,37 @@ pre code {
   cursor: pointer;
 }
 
-.theme-toggle:hover {
+.theme-toggle:hover,
+.nav-toggle:hover {
   border-color: var(--brand-native);
+}
+
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+@media (max-width: 56rem) {
+  .nav-toggle { display: inline-flex; }
+  .site-nav {
+    display: none;
+    order: 3;
+    inline-size: 100%;
+    padding-block: 0.5rem 0.25rem;
+    border-block-start: 1px solid var(--border);
+  }
+  .site-nav[data-open="true"] { display: block; }
+  .site-nav ul { flex-direction: column; align-items: stretch; gap: 0.15rem; }
+  .site-nav a { inline-size: 100%; padding-inline: 0.5rem; border-radius: var(--radius-sm); }
+  .site-nav a:hover { background-color: var(--surface-alt); }
 }
 
 /* Footer */

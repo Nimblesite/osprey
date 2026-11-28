@@ -1,7 +1,0 @@
-{
-  "spec": "[PACKAGE-SOURCE-CANONICAL]",
-  "files": [],
-  "envelopeHex": "6f73707265792e736f757263652e76310000000000",
-  "envelopeLength": 21,
-  "sourceDigest": "sha256:cc0dd61db3bb1b7fd165e5a83cfa2819c241038e830ba14e5ce287481f2eb1e7"
-}

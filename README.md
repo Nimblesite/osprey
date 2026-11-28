@@ -81,7 +81,7 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 | --- | --- |
 | [src/osprey/examples/](src/osprey/examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
 | [src/toolchain/crates/](src/toolchain/crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
-| [src/osprey/packages/](src/osprey/packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
+| [src/osprey/packages/](src/osprey/packages/README.md) | Osprey libraries in every syntax flavor. The [package manager](https://nimblesite.github.io/osprey-packages/) and [Perception](https://nimblesite.github.io/perception/) live in their own repositories, laid here by `make downstream` |
 | [src/toolchain/compiler/runtime/](src/toolchain/compiler/runtime) | C runtime and GPU adapters |
 | [src/toolchain/tree-sitter-osprey/](src/toolchain/tree-sitter-osprey) | Default-flavor grammar |
 | [src/osprey/tests/](src/osprey/tests) | Default and ML language suites with shared golden output |

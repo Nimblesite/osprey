@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent bank bank-app casting cleanarch cms flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage synth tally web-host workbench workbench-proof-assets
+.PHONY: agent bank bank-app casting cleanarch cms flock inbox painting python-app-ports qwen qwen-pull-headless signal-flow storage tally web-host workbench workbench-proof-assets
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
 agent: _runtime
@@ -102,10 +102,6 @@ tally:
 pocket-orchestra:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/pocket_orchestra/test
 
-## synth: The Prism synth, driven by accessible label. [UI-MACHINE-TEST]
-synth:
-	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/daw/test
-
 ## web-host: The browser host's WASI imports and bounded `http` capability, with no browser.
 web-host:
 	node --test src/toolchain/hosts/web/test/host.test.ts
@@ -122,15 +118,4 @@ workbench: build
 workbench-proof-assets:
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
-## daw-models: Generate the project and editor types and project JSON field codec from daw.td using TYPEDIAGRAM_DIST.
-.PHONY: daw-models
-daw-models:
-	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/daw_model.ospml daw
-	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/editor_model.ospml synth
-	node scripts/make/osprey-schema.mjs "$(TYPEDIAGRAM_DIST)" src/osprey/examples/daw/daw.td src/osprey/examples/daw/src/project_codec.ospml daw Arrangement
-
-## synth-vst: Verify isolated VST3 scanning and real instrument/effect processing headlessly.
-.PHONY: synth-vst
-synth-vst: _synth_vst_test
-
 endif

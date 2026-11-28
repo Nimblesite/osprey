@@ -44,23 +44,17 @@ function checkCssBudget() {
   }
 }
 
-const KW_RE = /\b(type|fn|let|match|perform|export|def|case|return|function|const|if|else|true|false|tap|tapAt|expect|picked|letters|valueOf|labels)\b/g;
-const TY_RE = /\b([A-Z][A-Za-z0-9_]*|int|string|bool)\b/g;
+const CODE_TOKEN_RE = /((?:#|\/\/)[^\n]*)|(&quot;[^&\n]*?&quot;|"[^"\n]*?")|\b(type|fn|let|match|perform|export|def|case|return|function|const|if|else|true|false|tap|tapAt|expect|picked|letters|valueOf|labels)\b|\b([A-Z][A-Za-z0-9_]*|int|string|bool)\b|\b(\d+(?:\.\d+)?)\b/g;
 
 function highlightCodeHtml(raw) {
-  const tokens = [];
-  const stash = (cls, text) => {
-    const idx = tokens.length;
-    tokens.push(`<span class="${cls}">${text}</span>`);
-    return `\x00T${idx}\x00`;
-  };
-  let s = raw
-    .replace(/((?:#|\/\/)[^\n]*)/g, (m) => stash("tok-cm", m))
-    .replace(/(&quot;[^&\n]*?&quot;|"[^"\n]*?")/g, (m) => stash("tok-str", m))
-    .replace(KW_RE, (m) => stash("tok-kw", m))
-    .replace(TY_RE, (m) => stash("tok-ty", m))
-    .replace(/\b(\d+(?:\.\d+)?)\b/g, (m) => stash("tok-num", m));
-  return s.replace(/\x00T(\d+)\x00/g, (_, i) => tokens[Number(i)]);
+  return raw.replace(CODE_TOKEN_RE, (m, cm, str, kw, ty, num) => {
+    if (cm) return `<span class="tok-cm">${cm}</span>`;
+    if (str) return `<span class="tok-str">${str}</span>`;
+    if (kw) return `<span class="tok-kw">${kw}</span>`;
+    if (ty) return `<span class="tok-ty">${ty}</span>`;
+    if (num) return `<span class="tok-num">${num}</span>`;
+    return m;
+  });
 }
 
 export default function (eleventyConfig) {

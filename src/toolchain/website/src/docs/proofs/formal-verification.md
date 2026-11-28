@@ -105,7 +105,7 @@ Audio is where Osprey's proofs have gone furthest. [Prism](/docs/audio-synthesis
 
 ### A worked example: the pan dial
 
-A pan dial moves a sound between the left and right speakers. Prism's pan comes from [arrange_math.ospml](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/daw/src/arrange_math.ospml):
+A pan dial moves a sound between the left and right speakers. Prism's pan comes from [arrange_math.ospml](https://nimblesite.github.io/perception/):
 
 ```ospml
 export panLeft pan = cos (0.7853981633974483 * (pan + 1.0))

@@ -163,16 +163,23 @@ jobs:
           node src/toolchain/hosts/web/scripts/build.mjs --app src/osprey/examples/talon/app --title "Talon Bank" --out src/toolchain/hosts/web/build/talon \
             --argument http://127.0.0.1:18790
 
-      - name: Build the extension bundle
-        run: make _vsix_bundle
+      # The extension's CI tests drive its package features against the laid package manager's
+      # main; the shipped VSIX bundles none of it [REPO-SPLIT].
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+
+      - name: Build the extension bundle and its package test fixtures
+        run: make _vsix_bundle_packages
 
       - name: Build the Zed WASM extension
         run: |
           rustup target add wasm32-wasip2
           make -C src/toolchain/zed-extension build
 
-      - name: Package the VSIX
-        run: make _vsix_package
+      - name: Package the CI test VSIX
+        run: make _vsix_package VSIX_PACKAGES=1
 
       - name: Build instrumented C runtime suites
         run: |
@@ -357,53 +364,6 @@ jobs:
       - name: Every Osprey program compiles
         run: make _check_programs
 
-  build-registry-hosted:
-    name: Build hosted registry test artifacts
-    needs: [changes, build]
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: osprey-build
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
-      - *install-wasi-sdk
-      - &install-wasmtime
-        name: Install pinned Wasmtime
-        env:
-          WASMTIME_VERSION: "27.0.0"
-          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
-            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
-          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
-          sudo mkdir -p /opt/wasmtime
-          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
-          echo "/opt/wasmtime" >> "$GITHUB_PATH"
-      - name: Build the packaged site and pinned migration tool
-        run: |
-          chmod +x target/release/osprey
-          make -C src/osprey/packages registry-website-fixture registry-migration-tool REGISTRY_WEBSITE_RUNTIME=
-      - uses: actions/upload-artifact@v7
-        with:
-          name: registry-hosted-fixture
-          path: |
-            target/registry-site-build/hosted-fixture/
-            target/registry-tools/*/bin/
-          retention-days: 1
-          if-no-files-found: error
-
-  # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
-  # Every suite, in parallel, each instrumented. None of these rebuilds the
-  # compiler: they download stage 1's artifacts.
-
   # The Rust workspace, run ONCE under llvm-cov, in three shards the coverage job
   # merges back into one report. There is no separate plain `cargo test` run: an
   # instrumented run asserts everything an uninstrumented one does, so running
@@ -437,13 +397,35 @@ jobs:
       # wasmtime, measuring the host's peak [CONCURRENCY-WASM], so the pinned
       # host is installed and checksummed too.
       - *install-wasi-sdk
-      - *install-wasmtime
+      - name: Install pinned Wasmtime
+        env:
+          WASMTIME_VERSION: "27.0.0"
+          WASMTIME_SHA256: "74678f6ec49d8b858ca5181d5492b967245f6c072b5763ea14a75eee1ad3c2d7"
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-max-time 60 -o /tmp/wasmtime.tar.xz \
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz"
+          echo "${WASMTIME_SHA256}  /tmp/wasmtime.tar.xz" | sha256sum --check
+          sudo mkdir -p /opt/wasmtime
+          sudo tar -xJf /tmp/wasmtime.tar.xz -C /opt/wasmtime --strip-components=1
+          echo "/opt/wasmtime" >> "$GITHUB_PATH"
 
       - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
+
+      # The compiler-side tests that build the package manager's client and editor and render
+      # Perception's songs run against the split repositories' main branches. [REPO-SPLIT-CANARY]
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+      - name: Lay Perception (Nimblesite/perception)
+        uses: ./.github/actions/downstream
+        with:
+          name: perception
 
       - name: Build the wasm runtime archive
         run: make _runtime_wasm
@@ -480,6 +462,45 @@ jobs:
 
   # [PKG-COVERAGE-GATE] Each package has its own source threshold. Keep this
   # collection independent of the Rust workspace's existing time budget.
+  # The split repositories' canaries [REPO-SPLIT-CANARY]: the main branches of
+  # Nimblesite/osprey-packages and Nimblesite/perception, laid over this checkout, each running its
+  # own `make canary` with this build's compiler. A change here that turns one red is fixed on that
+  # repository's main first.
+  test-canary:
+    name: "Tests: package manager and Perception canaries"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey target/osprey-pkg
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+      - name: Lay Perception (Nimblesite/perception)
+        uses: ./.github/actions/downstream
+        with:
+          name: perception
+      - name: Both canaries
+        run: make _canaries
+      # Every project built on @osprey/synth, the laid daw, its test and render projects included, so a
+      # package change that breaks Perception fails here, as it did before the split (bb930140d). The
+      # daw's sources also take signal_flow, json, native and graphics. [PKG-CONSUMERS-BUILD]
+      - name: Laid projects consume this repository's packages
+        run: |
+          node --test scripts/make/package-consumers.test.mjs
+          node scripts/make/package-consumers.mjs target/release/osprey synth
+
   test-packages:
     name: "Tests: package source coverage"
     needs: [changes, build]
@@ -507,103 +528,6 @@ jobs:
           path: target/coverage/packages/
           retention-days: 7
           if-no-files-found: error
-
-  test-registry-gc:
-    name: "Tests: package manager (gc)"
-    needs: [changes, build]
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - name: Setup Osprey toolchain (no rebuild)
-        uses: ./.github/actions/setup-osprey-compiler
-        with:
-          build: "false"
-      - uses: actions/download-artifact@v8
-        with:
-          name: osprey-build
-      - name: Restore artifact permissions
-        run: chmod +x target/release/osprey target/osprey-pkg
-      - name: Install uv for Python integration
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        with:
-          version: "0.11.3"
-          python-version: "3.12"
-          enable-cache: false
-      - name: Require Python integration prerequisites
-        run: |
-          uv --version
-          uv python install 3.12
-      - name: Package manager security and integration suites
-        run: make _test_registry REGISTRY_MEMORY=gc
-
-  test-registry-arc:
-    name: "Tests: package manager (arc)"
-    needs: [changes, build]
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - name: Setup Osprey toolchain (no rebuild)
-        uses: ./.github/actions/setup-osprey-compiler
-        with:
-          build: "false"
-      - uses: actions/download-artifact@v8
-        with:
-          name: osprey-build
-      - name: Restore artifact permissions
-        run: chmod +x target/release/osprey target/osprey-pkg
-      - name: Install uv for Python integration
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-        with:
-          version: "0.11.3"
-          python-version: "3.12"
-          enable-cache: false
-      - name: Require Python integration prerequisites
-        run: |
-          uv --version
-          uv python install 3.12
-      - name: Package manager security and integration suites
-        run: make _test_registry REGISTRY_MEMORY=arc
-
-  test-registry-hosted:
-    name: "Tests: hosted registry (PostgreSQL and Chromium)"
-    needs: [changes, build, build-registry-hosted]
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: osprey-build
-      - uses: actions/download-artifact@v8
-        with:
-          name: registry-hosted-fixture
-          path: target
-      - uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: src/toolchain/website/package-lock.json
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: '10.0.x'
-      - name: Install the locked browser harness
-        working-directory: src/toolchain/website
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-      - name: Replay migrations and exercise the packaged catalog and account flows
-        run: |
-          chmod +x target/release/osprey
-          export PATH="/usr/lib/postgresql/16/bin:$PATH"
-          test -x /usr/lib/postgresql/16/bin/postgres
-          make -C src/osprey/packages registry-integration-verify
 
   test-python-app-ports:
     name: "Tests: Python application ports"
@@ -829,6 +753,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # The production FFT proof reads Perception's arrange_math.ospml.
+      - name: Lay Perception (Nimblesite/perception)
+        uses: ./.github/actions/downstream
+        with:
+          name: perception
+
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -1037,6 +967,11 @@ jobs:
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey target/osprey-pkg target/osprey-registry src/toolchain/vscode-extension/bin/linux-x64/osprey src/toolchain/vscode-extension/bin/linux-x64/osprey-pkg src/toolchain/vscode-extension/bin/linux-x64/osprey-registry
 
+      # The package features are tested against the laid package manager's main [REPO-SPLIT].
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension
 
@@ -1598,6 +1533,11 @@ jobs:
               target/release/osprey test src/osprey/examples/pocket_orchestra/test --memory=arc
               make -C src/toolchain/targets/macos/tests pocket-orchestra-headless
               make -C src/toolchain/targets/macos/tests pocket-orchestra
+          - part: Perception
+            minutes: 15
+            run: |
+              make _runtime _runtime_macos
+              make _canaries OSPREY_PREBUILT=1
           - part: Qwen pull
             minutes: 5
             run: make -C src/toolchain/targets/tests qwen-pull-headless
@@ -1645,6 +1585,36 @@ jobs:
           npm ci --prefix src/toolchain/website
           npx --prefix src/toolchain/website playwright install chromium webkit
 
+      # Perception's renderer bounds every host command with `timeout` (its README prerequisites);
+      # macOS ships none, so only coreutils' gtimeout goes on the path under that name.
+      - name: timeout for Perception's canary
+        if: ${{ matrix.part == 'Perception' }}
+        run: |
+          command -v gtimeout >/dev/null || brew install coreutils
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$(command -v gtimeout)" "$RUNNER_TEMP/bin/timeout"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      # The canary's GPUI smoke links the GPUI host, which gpui.yml builds and caches; built cold it
+      # outran the part (PR #439), so it restores that cache read-only.
+      - name: Restore GPUI host
+        if: ${{ matrix.part == 'Perception' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
+          restore-keys: ${{ runner.os }}-gpui-host-
+
+      - name: Lay the package manager and Perception for their canary
+        if: ${{ matrix.part == 'Perception' }}
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+      - if: ${{ matrix.part == 'Perception' }}
+        uses: ./.github/actions/downstream
+        with:
+          name: perception
+
       - name: ${{ matrix.part }} builds, ABI, goldens and app tests
         env:
           OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
@@ -1667,12 +1637,12 @@ jobs:
   # job builds nothing and runs nothing: it reads reports and compares numbers.
   coverage:
     name: Coverage thresholds
-    needs: [changes, test-rust, test-extension, test-packages, test-c-runtime, test-registry-gc, test-registry-arc]
+    needs: [changes, test-rust, test-extension, test-packages, test-c-runtime]
     if: ${{ always() && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require successful coverage producers and package manager suites
+      - name: Require successful coverage producers
         id: producers
         env:
           NEEDS: ${{ toJSON(needs) }}
@@ -1786,6 +1756,7 @@ jobs:
   windows:
     name: CI (Windows)
     uses: ./.github/workflows/ci-windows.yml
+    secrets: inherit
 
   gpui:
     name: GPUI host
@@ -1794,6 +1765,7 @@ jobs:
   winui:
     name: WinUI host
     uses: ./.github/workflows/winui.yml
+    secrets: inherit
 
   # The release gate's own audit, so a PR cannot merge what `make audit` will refuse to release.
   audit:
@@ -1811,15 +1783,12 @@ jobs:
       - changes
       - build
       - build-macos
-      - build-registry-hosted
       - deslop
       - analyse
       - check-programs
       - test-rust
+      - test-canary
       - test-packages
-      - test-registry-gc
-      - test-registry-arc
-      - test-registry-hosted
       - test-python-app-ports
       - test-gpt2-parity
       - test-corpus-gc

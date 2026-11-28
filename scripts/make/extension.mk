@@ -56,22 +56,28 @@ _vsix_clean:
 # time version check either shipped a stale manifest or silently skipped. Local
 # builds report 0.0.0-dev, exactly what the committed manifest expects, so the
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
-# The editor ships a compiled Osprey package client; installations never compile
-# package-manager application sources on the user's machine. [PACKAGE-API]
-REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
+# The package manager is Nimblesite/osprey-packages' to build and ship [REPO-SPLIT]: the VSIX
+# bundles no client, registry server or package workspace, and the extension reads them from
+# osprey.packages.frontendPath, osprey.packages.appPath and osprey.packages.localRegistry.serverPath.
+# The targets below build them from `make downstream`'s laid main for the extension's CI tests only,
+# which `_vsix_bundle_packages` stages beside the bundled compiler.
+REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \) 2>/dev/null)
+.PHONY: _downstream_packages
+_downstream_packages:
+	@test -f src/osprey/packages/manager/cli/osprey.toml || { echo "The package manager is not laid down: run make downstream" >&2; exit 1; }
 # `--no-warnings` skips the warning pass: the redundant-annotation oracle
 # re-infers the whole program once per proof, which on the client is the
 # difference between 40 s and 31 min (one 7 s solve per annotation site).
 # `--quiet` alone silences progress only; warnings are diagnostics and would
 # still be computed. Package warnings are `osprey --check`'s and the editor's
 # to show; a packaging build only ships.
-target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
 	$(BIN) build src/osprey/packages/manager/cli --quiet --no-warnings -o $@
 
 NATIVE_HOST_ENTRY := src/osprey/packages/native/host/entry.ospml
 
-PACKAGE_WORKSPACE_SOURCES := $(NATIVE_HOST_ENTRY) $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
-target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
+PACKAGE_WORKSPACE_SOURCES := $(NATIVE_HOST_ENTRY) $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \) 2>/dev/null)
+target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm _downstream_packages
 	$(BIN) build src/osprey/packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
 WORKBENCH_SOURCES := $(NATIVE_HOST_ENTRY) src/osprey/workbench/osprey.toml $(shell find src/osprey/workbench/src src/osprey/examples/proof/kernel/src src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f -name '*.ospml')
@@ -79,12 +85,12 @@ target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build src/osprey/workbench --target=wasm32 --quiet --no-warnings -o $@
 
 # The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
-# registry server, which the extension bundles, and the repository's own
+# registry server, which the extension's CI tests stage, and the repository's own
 # packages published into a folder registry with `publish --folder`, which
-# `make -C src/osprey/packages registry-serve` serves. The VSIX carries no
+# osprey-packages' `registry-serve` serves. The VSIX carries no
 # packages: building it never publishes them. The stamp sits outside the tree,
 # where a stray file would be refused by the catalog walk.
-target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
 	$(BIN) build src/osprey/packages/manager/api --quiet --no-warnings -o $@
 
 #
@@ -97,13 +103,9 @@ target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-regi
 	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
-_vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-workspace.wasm target/osprey-registry target/workbench.wasm
+_vsix_bundle: target/workbench.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey$(EXE)"; \
-	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \
-	cp target/osprey-registry "$$DEST/osprey-registry$(EXE)"; \
-	rm -rf "$$DEST/registry"; \
-	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp target/workbench.wasm "$$DEST/workbench.wasm"; \
 	$(RM) "$$DEST/workbench"; $(MKDIR) "$$DEST/workbench"; \
 	cp -R src/osprey/workbench/lessons "$$DEST/workbench/"; \
@@ -114,6 +116,22 @@ _vsix_bundle: target/osprey-pkg target/local-registry.stamp target/package-works
 	cp .github/shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
+# The package panel's stylesheet and mark, from the laid registry's design tokens. CI tests only.
+.PHONY: _vsix_package_design
+_vsix_package_design:
+	cd $(EXT_DIR) && node scripts/sync-package-design.mjs
+
+# The extension's CI tests drive the package features against the laid package manager: its
+# client, registry server and package workspace go beside the bundled compiler. CI tests only.
+.PHONY: _vsix_bundle_packages
+_vsix_bundle_packages: _vsix_bundle _vsix_package_design target/osprey-pkg target/local-registry.stamp target/package-workspace.wasm target/osprey-registry
+	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; \
+	cp target/osprey-pkg "$$DEST/osprey-pkg$(EXE)"; \
+	cp target/osprey-registry "$$DEST/osprey-registry$(EXE)"; \
+	rm -rf "$$DEST/registry"; \
+	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
+	echo "  staged the laid package manager's client, registry server and workspace -> $$DEST/"
+
 # Refuse missing or stale build artifacts before running the full editor suite.
 # Test jobs have no WASI toolchain and must not compile a second package client.
 .PHONY: _vsix_verify
@@ -122,35 +140,34 @@ _vsix_verify:
 	@set -e; for INPUT in "$(BIN):osprey$(EXE)" "target/osprey-pkg:osprey-pkg$(EXE)" "target/osprey-registry:osprey-registry$(EXE)" "target/package-workspace.wasm:package-workspace.wasm" "target/workbench.wasm:workbench.wasm" \
 	    $(foreach ARCHIVE,$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)),"$(ARCHIVE):$(notdir $(ARCHIVE))"); do \
 	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
-	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \
+	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle_packages"; exit 1; }; \
 	done
 	diff -qr src/osprey/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
 	diff -qr -x lessons -x osprey-logo.png -x proof-libraries src/osprey/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
 	scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
 	cmp src/toolchain/website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
-	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
+	cd $(EXT_DIR) && node scripts/verify-package-client.mjs --packages
 
 # Package, then prove the VSIX carries the bundled compiler: `vsce` ships
 # whatever `.vscodeignore` leaves behind and reports success either way, so a
 # packaging regression is invisible until the installed extension quietly falls
 # back to whatever `osprey` is on PATH. Same assertion as the `vsix` job in
-# .github/workflows/release.yml.
+# .github/workflows/release.yml. VSIX_PACKAGES=1 packages the extension's CI test VSIX, which also
+# carries the laid package manager `_vsix_bundle_packages` staged [REPO-SPLIT].
+VSIX_PACKAGES ?=
 _vsix_package: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run package
 	@set -e; VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
 	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey" || \
 	  { echo "FAIL: $$VSIX carries no extension/bin/$(EXT_PLATFORM)/osprey"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-pkg" || \
-	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/package-workspace.wasm" || \
-	  { echo "FAIL: $$VSIX carries no package workspace WASM"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/workbench.wasm" || \
 	  { echo "FAIL: $$VSIX carries no workbench WASM"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/workbench/lessons/catalogue.json" || \
 	  { echo "FAIL: $$VSIX carries no workbench lessons"; exit 1; }; \
-	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-registry" || \
-	  { echo "FAIL: $$VSIX carries no local registry server"; exit 1; }; \
+	if [ -n "$(VSIX_PACKAGES)" ]; then for PART in osprey-pkg package-workspace.wasm osprey-registry; do \
+	  unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/$$PART" || \
+	    { echo "FAIL: the CI test VSIX $$VSIX carries no $$PART"; exit 1; }; done; fi; \
 	! unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/registry/" || \
 	  { echo "FAIL: $$VSIX bundles registry packages; the VSIX carries no packages"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
