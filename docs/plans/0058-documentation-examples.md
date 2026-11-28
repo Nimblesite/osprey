@@ -31,7 +31,7 @@ Enforced by `src/toolchain/website/lib/videos.mjs` and `src/toolchain/website/te
 
 ## FerroUI `[NATIVE-FERROUI-RETARGET]`
 
-The `rust-ui-framework-without-rust` tutorial teaches the GPUI host (`src/osprey/examples/gpui/painting` and `flock`). Every GPUI-based Osprey Native app moves to the FerroUI host (`src/toolchain/hosts/ferroui/`), `src/toolchain/hosts/gpui` is deleted once nothing uses it, and no new GPUI work is planned.
+The `rust-ui-framework-without-rust` tutorial teaches the GPUI host (`src/osprey/examples/gpui/painting` and `flock`). Every GPUI-based Osprey Native app moves to the FerroUI host (`src/osprey/packages/ferroui/`), `src/toolchain/hosts/gpui` is deleted once nothing uses it, and no new GPUI work is planned.
 
 - [ ] Retarget Painting and Flock to the FerroUI host: `make -C src/toolchain/targets/macos painting` and `flock` open them on FerroUI and their headless self-tests run there. [Plan 0037](0037-osprey-native.md) owns the engineering.
 - [ ] Re-make `rust-ui-framework-without-rust` on the FerroUI host once that lands: the watch page names FerroUI and the run command it shows still exists (`[DOC-TUTORIAL-VIDEO-SOURCE]`). Check: `videos.spec.js` keeps the tutorial listed.

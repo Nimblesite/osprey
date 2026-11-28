@@ -6,7 +6,7 @@ Goal: one shared-frame boundary and one host library per platform draw every Osp
 
 ## 1. Retarget the GPUI apps to FerroUI [NATIVE-FERROUI-RETARGET]
 
-GPUI is retired: each app's `run.sh` and the shared make recipes move to `src/toolchain/hosts/ferroui`, and no new GPUI work is planned.
+GPUI is retired: each app's `run.sh` and the shared make recipes move to `src/osprey/packages/ferroui`, and no new GPUI work is planned.
 
 - [ ] Retarget the probe to the FerroUI host: `make -C src/toolchain/targets/macos probe` opens it on FerroUI and its self-test (`make -C src/toolchain/targets/macos/tests probe-headless`) runs there [NATIVE-FERROUI-RETARGET].
 - [ ] Retarget Flock to the FerroUI host: `make -C src/toolchain/targets/macos flock` opens it on FerroUI and its self-test (`make -C src/toolchain/targets/macos/tests flock-headless`) runs there [NATIVE-FERROUI-RETARGET].
@@ -16,7 +16,7 @@ GPUI is retired: each app's `run.sh` and the shared make recipes move to `src/to
 - [ ] Retarget Casting iOS to the FerroUI host: `make -C src/toolchain/targets/ios casting` opens it on FerroUI and its journey (`make -C src/toolchain/targets/ios/tests casting-headless`) runs there. Casting mobile goes through FerroUI, never GPUI [NATIVE-FERROUI-RETARGET].
 - [ ] Retarget Casting Android to the FerroUI host: `make -C src/toolchain/targets/android casting` opens it on FerroUI and its journeys (`make -C src/toolchain/targets/android/tests casting-headless`) run there [NATIVE-FERROUI-RETARGET].
 - [ ] Remove the daw's `daw-gpui` fallback: delete the `daw-gpui` target from `src/toolchain/targets/macos/Makefile` and the GPUI path from `src/osprey/examples/daw/run.sh`; `prism` and `daw-events-headless` are its only desktop entry points [NATIVE-FERROUI-RETARGET].
-- [ ] Delete `src/toolchain/hosts/gpui` and its make targets once nothing uses GPUI: first move the modules FerroUI includes by `#[path = "../gpui/src/…"]` (`src/toolchain/hosts/ferroui/lib.rs`, `adapters.rs`, `app.rs`) into the FerroUI host, then remove `_gpui-app-self-test` (`scripts/make/apps.mk`), `GPUI_APPS` (`src/toolchain/targets/macos/tests/Makefile`), the `hosts/gpui` cargo test (`src/toolchain/targets/tests/Makefile`) and `.github/workflows/gpui.yml`. Check: `git grep -l hosts/gpui` is empty and `make -C src/toolchain/targets/macos/tests` is green [NATIVE-FERROUI-RETARGET].
+- [ ] Delete `src/toolchain/hosts/gpui` and its make targets once nothing uses GPUI: first move the modules FerroUI includes by `#[path = "../gpui/src/…"]` (`src/osprey/packages/ferroui/lib.rs`, `adapters.rs`, `app.rs`) into the FerroUI host, then remove `_gpui-app-self-test` (`scripts/make/apps.mk`), `GPUI_APPS` (`src/toolchain/targets/macos/tests/Makefile`), the `hosts/gpui` cargo test (`src/toolchain/targets/tests/Makefile`) and `.github/workflows/gpui.yml`. Check: `git grep -l hosts/gpui` is empty and `make -C src/toolchain/targets/macos/tests` is green [NATIVE-FERROUI-RETARGET].
 
 ## 2. Framework neutrality [NATIVE-HOSTS-NEUTRAL]
 
@@ -30,7 +30,7 @@ GPUI is retired: each app's `run.sh` and the shared make recipes move to `src/to
 
 ## 4. Coverage matrix [NATIVE-HOSTS-COVERAGE]
 
-- [ ] Add a script that reads the constructor names in `src/osprey/packages/native/src/node.ospml` and `capability.ospml` plus each host's mapping table (`src/toolchain/hosts/ferroui/view.rs`, `src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs`, `src/toolchain/vscode-extension/client/src/osprey-ui/render.ts` + `capabilities.ts`, and the SwiftUI and Android hosts' kind lists) and writes `src/osprey/packages/native/COVERAGE.md`.
+- [ ] Add a script that reads the constructor names in `src/osprey/packages/native/src/node.ospml` and `capability.ospml` plus each host's mapping table (`src/osprey/packages/ferroui/view.rs`, `src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs`, `src/toolchain/vscode-extension/client/src/osprey-ui/render.ts` + `capabilities.ts`, and the SwiftUI and Android hosts' kind lists) and writes `src/osprey/packages/native/COVERAGE.md`.
 - [ ] Make CI regenerate `COVERAGE.md` and fail on a diff, so a new constructor cannot land without every host's cell.
 - [ ] Each host README links its column, the iOS and Android hosts' included.
 
@@ -43,7 +43,7 @@ GPUI is retired: each app's `run.sh` and the shared make recipes move to `src/to
 ## 6. Storage [UI-EFFECTS-MEASURE] [UI-COMPONENTS-SHORTCUT] [NATIVE-HOSTS-NEUTRAL]
 
 - [ ] Run Storage on the FerroUI host, whose view already draws `split` and `context-menu`. Check: `make -C src/toolchain/targets/macos storage` opens it with no diagnostics.
-- [ ] Add the FerroUI `MeasureFolders` adapter in `src/toolchain/hosts/ferroui/adapters/`: Rust on `std::fs`, `st_blocks` and `(st_dev, st_ino)` on Unix, the Windows rules from spec 0048's folder walk; tests on a temporary tree cover a hidden file, a symbolic link, a hard link counted once, an unreadable folder, deadline and cancel. Check: `cargo test --manifest-path src/toolchain/hosts/ferroui/Cargo.toml measure`.
+- [ ] Add the FerroUI `MeasureFolders` adapter in `src/osprey/packages/ferroui/adapters/`: Rust on `std::fs`, `st_blocks` and `(st_dev, st_ino)` on Unix, the Windows rules from spec 0048's folder walk; tests on a temporary tree cover a hidden file, a symbolic link, a hard link counted once, an unreadable folder, deadline and cancel. Check: `cargo test --manifest-path src/osprey/packages/ferroui/Cargo.toml measure`.
 - [ ] Windows folder walk in both adapters (Rust and C#): capacity from `GetDiskFreeSpaceExW`, one `GetFileInformationByHandleEx(FileIdExtdDirectoryInfo)` batch per directory, hidden is `FILE_ATTRIBUTE_HIDDEN`, only `IO_REPARSE_TAG_SYMLINK` and `IO_REPARSE_TAG_MOUNT_POINT` are links, `WOF` files count allocated bytes and `APPEXECLINK` 0, cloud placeholders are never opened, hard links once by volume serial + 128-bit file id, `ERROR_ACCESS_DENIED` adds one unreadable. Check: both adapters produce the same JSON on a shared fixture tree.
 - [ ] Add `Shortcut`/`Chord` to `src/osprey/packages/native/src/node.ospml`: a `Button` may carry a typed `Chord`; `Primary` is Command on Apple systems and Control elsewhere; the host shows the chord in its menu or tooltip; Osprey picks the chords per platform (Alt+Up, F5, Ctrl+O on Windows; Command+Up, Command+R, Command+O on the Mac).
 - [ ] Elevation on Windows: a `windows`-namespace `HostCall` "restart as administrator", answered by the WinUI host with `ShellExecuteExW`/`runas` and `--elevated`, offered only on Windows when the walk hit unreadable folders and the process is not elevated. Check: a Storage self-test drives it.
@@ -51,7 +51,7 @@ GPUI is retired: each app's `run.sh` and the shared make recipes move to `src/to
 - [ ] Storage acceptance: `./target/release/osprey test src/osprey/examples/storage/test` is green on every OS and no host source names Storage.
 - [ ] Retire `src/osprey/examples/macos` once Storage runs on FerroUI, WinUI and SwiftUI; move every link to `src/osprey/examples/storage` and keep a website redirect.
 - [ ] Record a full `C:` drive measurement (walk time, peak memory, gap vs used capacity) in `src/osprey/examples/storage/README.md`.
-- [ ] Record flat memory over ten minutes of Flock in the FerroUI window in `src/toolchain/hosts/ferroui/README.md`, and a focused-window fps reading at 5,000 birds with the screen unlocked (M-series Mac) in `src/osprey/examples/gpui/flock/README.md`.
+- [ ] Record flat memory over ten minutes of Flock in the FerroUI window in `src/osprey/packages/ferroui/README.md`, and a focused-window fps reading at 5,000 birds with the screen unlocked (M-series Mac) in `src/osprey/examples/gpui/flock/README.md`.
 
 ## 7. WinUI host [WINUI-HOST-CAPABILITIES] [WINUI-HOST-DLL] [WINUI-HOST-SCENE]
 
