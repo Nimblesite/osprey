@@ -120,7 +120,7 @@ flowchart LR
 | Linux x86_64 | `brew install klee` | arm64 Linux is unsupported upstream |
 | Windows | Not yet implemented; KLEE would run inside WSL2 ([SYMEX-HOSTS](#hosts--symex-hosts)) | — |
 
-KLEE runs natively on the host; there is no container in this pipeline. The supported install is Homebrew's `klee` 3.3 built on `llvm@19`; `osprey hunt` does not check KLEE's or LLVM's version at startup. `make` finds KLEE's `clang` through `OSPREY_KLEE_PREFIX` / `OSPREY_KLEE_LLVM` or the Homebrew prefixes (`scripts/make/config.mk`); `make build` on a machine without that toolchain skips the runtime bitcode with a note, and `osprey hunt` then exits `2` suggesting `brew install klee`.
+KLEE runs natively on the host; there is no container in this pipeline. The supported install is Homebrew's `klee` 3.3 built on `llvm@19`; `osprey hunt` does not check KLEE's or LLVM's version at startup. `make` finds KLEE's `clang` through `OSPREY_KLEE_PREFIX` / `OSPREY_KLEE_LLVM` or the Homebrew prefixes (`scripts/make/config.mk`); `make build` on a machine without that toolchain skips the runtime bitcode with a note, and `osprey hunt` then exits `2` suggesting `brew install klee`. Every macOS and Linux release tarball ships `libosprey_runtime_klee_gc.bc`, `libosprey_runtime_klee_arc.bc` and the GC-root pass `libosprey_gc_roots.so` beside the `osprey` binary, which finds them there; the release fails unless `osprey hunt` run from the unpacked tarball finds, replays and reproduces `src/osprey/tests/hunt/crash.osp`'s planted abort on both backends, linking that shipped runtime (#443).
 
 ## CLI
 
