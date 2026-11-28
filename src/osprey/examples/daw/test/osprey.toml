@@ -1,8 +1,0 @@
-[project]
-name = "daw-tests"
-source_roots = ["../../../packages/synth/src", ".", "../src", "../render/note_cache.ospml", "../render/shell.ospml", "../../../packages/manager/core/src/bytes.osp", "../../../packages/manager/core/src/sha256.osp", "../../../packages/signal_flow/src", "../../../packages/native/src", "../../../packages/graphics/src", "../../../packages/json/src", "../../../packages/uitest/src"]
-default_namespace = "synthtests"
-entry = "main.ospml"
-
-[modules]
-allow_wildcard_imports = false

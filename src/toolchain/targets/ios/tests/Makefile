@@ -7,7 +7,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bank casting casting-headless casting-update examples inbox tally tally-headless
+.PHONY: apps bank casting casting-headless casting-update corpus examples inbox tally tally-headless
 
 ## bank: Talon Bank's journey (app/self-test.json, the file every host plays) in the iPhone simulator against a
 ##       fresh backend, each shot compared with app/goldens/ios. The backend runs natively, so it links the runtime.
@@ -26,9 +26,17 @@ casting-headless:
 casting-update:
 	OSPREY_UPDATE_GOLDENS=1 $(MAKE) -f src/toolchain/targets/ios/tests/Makefile casting
 
-## examples: Validate C ABI calls, language goldens and the SwiftUI simulator app.
+## examples: Validate C ABI calls, language goldens and the SwiftUI simulator app: corpus and apps together.
 examples: _ios-examples
 	$(MAKE) _test_ios
+
+## corpus: The whole test corpus in an iPhone simulator against the native goldens, without the apps.
+corpus: _runtime_ios_sim
+	$(MAKE) _test_ios_goldens
+
+## apps: The runtime memory checks, the C ABI fixture and the SwiftUI app's smoke, without the corpus.
+apps: _ios-examples
+	$(MAKE) _test_ios_apps
 
 ## inbox: Smoke-test the built inbox app on iOS.
 inbox: _ios-inbox

@@ -1,7 +1,0 @@
-namespace demo_greeting;
-
-/// Greetings served by the sample folder registry.
-module Greeting {
-    /// A greeting addressed to `name`.
-    export fn hello(name) = "Hello, ${name}!"
-}

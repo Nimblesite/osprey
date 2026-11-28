@@ -449,7 +449,7 @@ _test_profiler:
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
 # CI consumes the exact stage-1 bundle; public `make test` builds it first.
-_test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
+_test_vscode_extension: _vsix_package_design _vsix_verify $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey$(EXE)
@@ -463,7 +463,7 @@ _test_vscode_extension: _vsix_verify $(EXT_NODE_DEPS)
 	    --coverage-reporter text-summary --coverage-reporter json-summary --coverage-reporter html 2>&1 | tee -a test.log
 # The VS Code CLI otherwise waits for an interactive install prompt on WSL.
 	@echo "==> [vscode-extension] testing the installed VSIX and its bundled compiler..."
-	$(MAKE) _vsix_package
+	$(MAKE) _vsix_package VSIX_PACKAGES=1
 	cd $(EXT_DIR) && set -o pipefail && DONT_PROMPT_WSL_INSTALL=1 npm run test:vsix 2>&1 | tee -a test.log
 
 # Gates EVERY metric the summary reports, not lines alone. Lines-only was the
@@ -520,56 +520,6 @@ _gpu-demo: build
 _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test src/osprey/examples/talon/backend/test
-
-# Osprey package system (src/osprey/packages/manager/): one process runs every suite from the
-# src/osprey/packages/manager/tests project with core, host and CLI sources assembled together,
-# because `osprey test` compiles suites in isolation and cannot import them.
-# src/osprey/packages/manager/fixture-check runs first and fails fast: every fixture is data,
-# parses strictly, cites a defined spec section and is indexed, every typed
-# fixture value is schema-valid and canonically ordered, and every registry
-# source cites only defined sections. src/osprey/packages/manager/manifest/tests is the TOML
-# parser and manifest-rule suite, a separate program until that code joins
-# core. src/osprey/packages/manager/e2e runs last: it starts the
-# server over src/osprey/packages/manager/sample-registry on 127.0.0.1:18797, compares every
-# endpoint with the pure router, fetches every release, and builds and runs a
-# consumer project against the fetched sources. Local tests and CI run all
-# suites under both managed backends; the TAP runner propagates failed checks.
-REGISTRY_MEMORY ?= gc
-REGISTRY_NATIVE_CLIENT = $(CURDIR)/target/$(if $(filter arc,$(REGISTRY_MEMORY)),registry-tests/osprey-pkg-arc,osprey-pkg)
-_test_registry: export OSPREY_E2E_COMPILER = $(abspath $(BIN))
-_test_registry: export OSPREY_E2E_MEMORY = $(REGISTRY_MEMORY)
-_test_registry:
-	@case "$(REGISTRY_MEMORY)" in gc|arc) ;; *) echo "Registry tests require GC or ARC"; exit 1 ;; esac
-	@echo "==> Registry fixture and schema validation (fail-fast)..."
-	./$(BIN) test src/osprey/packages/manager/fixture-check --memory=$(REGISTRY_MEMORY)
-	@echo "==> Registry manifest (TOML parser and manifest rules) tests..."
-	./$(BIN) test src/osprey/packages/manager/manifest/tests --memory=$(REGISTRY_MEMORY)
-	@echo "==> Registry CLI (package frontend) tests..."
-	./$(BIN) test src/osprey/packages/manager/cli/tests --memory=$(REGISTRY_MEMORY)
-	@echo "==> Registry (Osprey package system) tests..."
-	./$(BIN) test src/osprey/packages/manager/tests --memory=$(REGISTRY_MEMORY)
-	@echo "==> Registry end-to-end: server, fetch and consumer build..."
-	./$(BIN) test src/osprey/packages/manager/e2e --memory=$(REGISTRY_MEMORY)
-	./$(BIN) test src/osprey/packages/manager/auth-tests --memory=$(REGISTRY_MEMORY)
-	./$(BIN) test src/osprey/packages/manager/database-tests --memory=$(REGISTRY_MEMORY)
-	./$(BIN) test src/osprey/packages/manager/governance-tests --memory=$(REGISTRY_MEMORY)
-	./$(BIN) test src/osprey/packages/manager/hosted-tests --memory=$(REGISTRY_MEMORY)
-	./$(BIN) test src/osprey/packages/manager/web --memory=$(REGISTRY_MEMORY)
-	@echo "==> Native publication and installed-source integrity regressions..."
-	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
-	  mkdir -p "$(CURDIR)/target/registry-tests" && \
-	  "$(abspath $(BIN))" build src/osprey/packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
-	fi
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/packages/test-package-publication.py
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/packages/test-package-interruption.py
-
-# Blocked host capabilities, each asserted as the behavior the package system
-# needs. Red is the documented state until the capability lands in Osprey;
-# a probe turning green is the signal to delete its entry from
-# src/osprey/packages/manager/core/src/capabilities.osp.
-_test_registry_blockers:
-	@echo "==> Registry blocked-capability probes (expected red until each lands)..."
-	./$(BIN) src/osprey/packages/manager/blockers --run
 
 # _language-test: Run the assertion-driven Default + ML core language corpus.
 _language-test: build

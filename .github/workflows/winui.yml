@@ -106,6 +106,17 @@ jobs:
           echo "OSPREY_CC=$(cygpath -m /ucrt64/bin/clang.exe)" >> "$GITHUB_ENV"
           echo "OSPREY_AR=$(cygpath -m /ucrt64/bin/llvm-ar.exe)" >> "$GITHUB_ENV"
 
+      # Prism's Windows app (synth.dll) builds from Perception's main, with the package manager
+      # core it hashes with, for its self-test below. [REPO-SPLIT-CANARY]
+      - name: Lay the package manager (Nimblesite/osprey-packages)
+        uses: ./.github/actions/downstream
+        with:
+          name: osprey-packages
+      - name: Lay Perception (Nimblesite/perception)
+        uses: ./.github/actions/downstream
+        with:
+          name: perception
+
       - name: The apps' DLLs
         shell: msys2 {0}
         run: |

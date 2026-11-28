@@ -1,10 +1,16 @@
 {
   "workbench.colorCustomizations": {
-    "titleBar.activeBackground": "#3d683d",
-    "titleBar.activeForeground": "#ffffff",
-    "titleBar.inactiveBackground": "#2d4e2d",
-    "titleBar.inactiveForeground": "#ffffffcc",
-    "activityBar.background": "#3d683d"
+    "titleBar.activeBackground": "#0c1325",
+    "titleBar.activeForeground": "#dce1fb",
+    "titleBar.inactiveBackground": "#070d1f",
+    "titleBar.inactiveForeground": "#bdc8cd",
+    "titleBar.border": "#3e484c",
+    "activityBar.background": "#0c1325",
+    "activityBar.foreground": "#77d7f4",
+    "activityBar.inactiveForeground": "#889297",
+    "activityBar.activeBorder": "#77d7f4",
+    "activityBarBadge.background": "#77d7f4",
+    "activityBarBadge.foreground": "#003642"
   },
   "rust-analyzer.testExplorer": true,
   "rust-analyzer.linkedProjects": [

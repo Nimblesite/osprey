@@ -117,7 +117,10 @@ const conditionMissing = gateBlock.some((line) => line.trim() === GATE_CONDITION
 
 // ---- The Windows release toolchain must be the one Windows CI proved --------
 // v0.23.0 shipped nothing: release.yml lacked the MinGW clang driver, so osprey
-// fell back to the runner's MSVC clang and `link.exe` could not find ssl.lib.
+// fell back to the runner's MSVC clang and `link.exe` could not find ssl.lib. The release no longer
+// compiles an Osprey program on Windows (the package client is osprey-packages' to ship,
+// [REPO-SPLIT]); ci-windows still pins the MinGW clang before its canaries, which
+// test-release-gate.py checks.
 
 const WINDOWS_CI_WORKFLOW = 'ci-windows.yml'
 const MSYS2_PACKAGE = /^\s+(mingw-w64-[A-Za-z0-9_.+-]+)\s*$/
@@ -127,9 +130,6 @@ const releasePackages = msys2Packages(RELEASE_WORKFLOW)
 const windowsToolchainDrift = msys2Packages(WINDOWS_CI_WORKFLOW)
   .filter((name) => !releasePackages.includes(name))
   .map((name) => `${RELEASE_WORKFLOW}: MSYS2 package \`${name}\` is installed by ${WINDOWS_CI_WORKFLOW} but not by the release build`)
-const mingwClangUnpinned = releaseLines.some((line) => line.includes('OSPREY_CC='))
-  ? []
-  : [`${RELEASE_WORKFLOW}: the Windows build must pin OSPREY_CC to the MinGW clang or osprey links with MSVC`]
 
 // ---- wasm32 releases must carry the runtimes the compiler links -------------
 // The wasm applications happen to build these archives through order-only Make
@@ -141,7 +141,7 @@ const readStep = (job, name) => {
   return start === -1 ? [] : takeWhile(block.slice(start + 1), (line) => !/^ {6}- /.test(line))
 }
 const WASM_RUNTIME_ARCHIVES = ['libosprey_runtime_wasm_arc.a', 'libosprey_runtime_wasm_ownership.a']
-const portableWasmStep = readStep('build', 'Build portable package workspace')
+const portableWasmStep = readStep('build', 'Build portable workbench')
 const packageStep = readStep('build', 'Package')
 const wasmRuntimeBuildMissing = portableWasmStep.some((line) => line.trim() === 'make _runtime_wasm')
   ? []
@@ -168,7 +168,6 @@ const failures = [
   ...conditionMissing,
   ...credentialEnvironmentMissing,
   ...windowsToolchainDrift,
-  ...mingwClangUnpinned,
   ...wasmRuntimeBuildMissing,
   ...wasmRuntimePackageGaps,
 ]

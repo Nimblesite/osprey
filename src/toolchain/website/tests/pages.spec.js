@@ -36,9 +36,10 @@ test("specification links resolve across subject folders and duplicate URLs are 
   const root = path.resolve("../../../docs/specs");
   const file = path.join(root, "platforms/0038-iOSTarget.md");
   const compiler = path.join(root, "compiler/iOSCodegen.md");
+  // [REPO-SPLIT] The registry model lives in Nimblesite/osprey-packages; the spec links to it.
   const registry = pagesFrom([{ file: path.join(root, "ecosystem/0031-PackageDomainModel.md"), section: {} }])[0];
-  const schema = fs.readFileSync(path.resolve("../schemas/package-registry.td"), "utf8").trimEnd();
-  expect(registry.content.split("```typediagram\n")[1].split("\n```")[0]).toBe(schema);
+  expect(registry.content).toContain("https://github.com/Nimblesite/osprey-packages/blob/main/src/toolchain/schemas/package-registry.td");
+  expect(registry.content).not.toContain("```typediagram");
   const pages = new Map([[compiler, { permalink: "/spec/ioscodegen/" }]]);
   expect(resolveLink("../compiler/iOSCodegen.md#ios-host-abi", file, pages)).toBe("/spec/ioscodegen/#ios-host-abi");
   expect(resolveLink("../README.md", file, pages)).toBe("/spec/");

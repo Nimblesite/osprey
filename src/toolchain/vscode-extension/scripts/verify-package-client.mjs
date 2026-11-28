@@ -6,12 +6,16 @@ for (const name of ["wasi", "wasi-runner", "wasi-worker"]) {
   const file = path.join(extension, "out/client/src/osprey-ui", `${name}.js`);
   if (!fs.existsSync(file) || fs.statSync(file).size === 0) throw new Error(`Missing bundled WASI runtime module: ${file}`);
 }
+// The shipped bundle: the compiler's WASI modules, the workbench and its assets. The package
+// manager is Nimblesite/osprey-packages' to ship [REPO-SPLIT]; `--packages` also requires the package
+// test fixtures `make _vsix_bundle_packages` stages for the extension's CI tests.
+const packages = process.argv.includes("--packages");
 const os = process.platform === "win32" ? "win32" : process.platform === "darwin" ? "darwin" : "linux";
-const executable = process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg";
-const client = path.join(extension, "bin", `${os}-${process.arch === "arm64" ? "arm64" : "x64"}`, executable);
-if (!fs.existsSync(client)) throw new Error(`Missing bundled package client: ${client}. Run make _vsix_bundle before packaging.`);
-for (const name of ["package-workspace", "workbench"]) {
-  const artifact = path.join(path.dirname(client), `${name}.wasm`);
+const bundle = path.join(extension, "bin", `${os}-${process.arch === "arm64" ? "arm64" : "x64"}`);
+const client = path.join(bundle, process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg");
+if (packages && !fs.existsSync(client)) throw new Error(`Missing package client: ${client}. Run make _vsix_bundle_packages.`);
+for (const name of packages ? ["package-workspace", "workbench"] : ["workbench"]) {
+  const artifact = path.join(bundle, `${name}.wasm`);
   const label = name.replaceAll("-", " ");
   if (!fs.existsSync(artifact)) throw new Error(`Missing bundled ${label}: ${artifact}. Run make _vsix_bundle before packaging.`);
   const bytes = fs.readFileSync(artifact);
@@ -26,7 +30,7 @@ for (const name of ["package-workspace", "workbench"]) {
     }
   }
 }
-const assets = path.join(path.dirname(client), "workbench");
+const assets = path.join(bundle, "workbench");
 const lessons = path.join(assets, "lessons");
 function bundledFile(source) {
   if (!fs.existsSync(path.join(assets, source))) throw new Error(`Missing workbench asset: ${source}`);
@@ -95,11 +99,11 @@ for (const slug of catalogue.lessons) {
 }
 
 // The local package registry [PACKAGE-LOCAL-REGISTRY]: the server, never packages; it
-// serves a folder in the extension's storage. Not bundled on Windows yet (its tree
+// serves a folder in the extension's storage. Not staged on Windows yet (its tree
 // walk needs POSIX find).
-if (process.platform !== "win32") {
-  const server = path.join(path.dirname(client), "osprey-registry");
-  if (!fs.existsSync(server)) throw new Error(`Missing bundled local registry server: ${server}. Run make _vsix_bundle before packaging.`);
-  const packages = path.join(path.dirname(client), "registry");
-  if (fs.existsSync(packages)) throw new Error(`The VSIX bundles no packages, but ${packages} exists. Run make _vsix_bundle before packaging.`);
+if (packages && process.platform !== "win32") {
+  const server = path.join(bundle, "osprey-registry");
+  if (!fs.existsSync(server)) throw new Error(`Missing bundled local registry server: ${server}. Run make _vsix_bundle_packages.`);
+  const registry = path.join(bundle, "registry");
+  if (fs.existsSync(registry)) throw new Error(`The VSIX bundles no packages, but ${registry} exists. Run make _vsix_bundle_packages.`);
 }

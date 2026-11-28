@@ -12,7 +12,8 @@ acknowledgement, with credit to the reporter unless they ask otherwise.
 
 - The Osprey compiler and runtime, including the HTTP, process and file
   builtins.
-- The package system under `src/osprey/packages/manager/`: the folder-registry server, the
+- The package system, which every release ships ([osprey-packages](https://nimblesite.github.io/osprey-packages/),
+  laid at `src/osprey/packages/manager/` by `make downstream`): the folder-registry server, the
   package frontend (`fetch`, `lock`, `verify`, `build`), the manifest and lock
   parsers and the resolver. Its threat model and the gates a report can test
   against are in

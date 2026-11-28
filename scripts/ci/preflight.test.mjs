@@ -142,16 +142,17 @@ test('the coverage gates run last, after every test that feeds them', () => {
 })
 
 test('each check keeps the host CI gives it', () => {
-  assert.equal(find(/^make -C src\/toolchain\/targets\/ios\/tests examples$/)?.host, 'macos')
-  assert.equal(find(/^make _test_registry REGISTRY_MEMORY=arc$/)?.host, 'linux')
-  assert.equal(skipReason(find(/^make _test_registry REGISTRY_MEMORY=arc$/), 'macos'), undefined, 'a Mac runs the Linux checks')
+  assert.equal(find(/^make -C src\/toolchain\/targets\/ios\/tests corpus$/)?.host, 'macos')
+  assert.equal(find(/^make -C src\/toolchain\/targets\/ios\/tests apps$/)?.host, 'macos')
+  assert.equal(find(/^make _canaries$/)?.host, 'linux')
+  assert.equal(skipReason(find(/^make _canaries$/), 'macos'), undefined, 'a Mac runs the Linux checks')
   const windows = checks.filter((check) => /^(ci-windows|winui)\.yml/.test(check.job))
   assert.ok(windows.length > 5 && windows.every((check) => skipReason(check, 'macos')), 'a Mac skips every Windows check, naming why')
   assert.equal(skipReason(windows.find((check) => /dotnet test/.test(check.command)), 'macos'), 'needs a windows host')
   assert.equal(windows.find((check) => /dotnet test/.test(check.command))?.shell, 'pwsh')
   assert.equal(checks.find((check) => check.host === 'windows' && /git lfs pull/.test(check.command))?.shell, 'pwsh')
   assert.equal(windows.find((check) => /make _runtime CC=gcc AR=ar/.test(check.command))?.shell, 'msys2')
-  assert.equal(find(/^make _test_registry REGISTRY_MEMORY=arc$/)?.shell, 'bash')
+  assert.equal(find(/^make _canaries$/)?.shell, 'bash')
 })
 
 test('matrix rows, steps and runners are read from the workflow text', () => {
