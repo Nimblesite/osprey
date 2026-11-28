@@ -64,9 +64,6 @@ name = "RecursorCases"
 [[lean_lib]]
 name = "SameSyntax"
 
-[[lean_lib]]
-name = "Synthesis"
-
 # [CONCURRENCY-FIBER-LIFETIME] The holder count that frees a fiber.
 [[lean_lib]]
 name = "FiberLifetime"

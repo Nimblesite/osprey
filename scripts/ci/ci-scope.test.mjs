@@ -258,7 +258,7 @@ test('local CI and hosted CI run both split repositories\' canaries once with th
   assert.doesNotMatch(hosted, /ssh-key|DEPLOY_KEY/, 'the split repositories are read keyless, as public repositories')
   assert.match(job('ci', '.github/workflows/ci.yml'), /^      - test-canary$/m)
   // Each repository's own `make canary`, never a copy of its recipe, with the prebuilt compiler.
-  assert.deepEqual(makeRecipe('_canaries'), ['$(MAKE) -f scripts/make/osprey-packages.mk canary OSPREY_PREBUILT=1',
+  assert.deepEqual(makeRecipe('_canaries'), ['$(MAKE) -C target/downstream/osprey-packages canary BIN=$(abspath $(BIN))',
     '$(MAKE) -f scripts/make/perception.mk canary OSPREY_PREBUILT=1'])
   assert.ok(makeRecipe('canaries').includes('$(MAKE) _canaries'))
   assert.deepEqual(makeRecipe('downstream'), ['bash scripts/ci/downstream.sh'])

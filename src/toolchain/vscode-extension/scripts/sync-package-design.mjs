@@ -1,10 +1,10 @@
 // Build the package workspace assets from the registry's canonical mark and design tokens, read from
-// the package manager `make downstream` lays: a CI test fixture, never shipped [REPO-SPLIT].
+// the package manager `make downstream` checks out: a CI test fixture, never shipped [REPO-SPLIT].
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const media = new URL("../media/", import.meta.url);
 const output = new URL("registry/", media);
-const catalog = new URL("../../../osprey/packages/manager/web/assets/", import.meta.url);
+const catalog = new URL("../../../../target/downstream/osprey-packages/src/manager/web/assets/", import.meta.url);
 // A Windows checkout may give the stylesheet CRLF line ends: read them as LF.
 const css = readFileSync(new URL("registry.css", catalog), "utf8").replace(/\r\n/gu, "\n");
 const tokens = /^:root \{\n([^}]+)\}/u.exec(css)?.[1].split("\n").filter(line => line.trimStart().startsWith("--"));

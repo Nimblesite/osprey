@@ -281,7 +281,7 @@ fn run_reports_an_uninvokable_c_compiler() {
 #[test]
 fn a_native_boundary_package_builds_one_wasm_module_exporting_the_boundary() {
     let out = std::env::temp_dir().join(format!("osprey_e2e_boundary_{}.wasm", std::process::id()));
-    let editor = repo_root().join("src/osprey/packages/manager/editor");
+    let editor = repo_root().join("target/downstream/osprey-packages/src/manager/editor");
     let mut command = super::osprey();
     let _ = command
         .arg("build")
