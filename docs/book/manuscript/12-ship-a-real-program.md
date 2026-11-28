@@ -66,4 +66,4 @@ Produce a native artifact, record its command and environment, then build only t
 - Targets: `docs/specs/compiler/0022-WebAssemblyTarget.md`, `docs/specs/platforms/0038-iOSTarget.md`, and `docs/specs/platforms/0039-AndroidTarget.md`.
 - Debug/profiling distinction: `docs/specs/tooling/0028-Profiler.md`, `[PROF-BUILD-MODE]`; executable checks in `scripts/tests/test_profiler.sh`.
 - Project support: `docs/specs/language/0025-ModulesAndNamespaces.md`, `src/osprey/examples/talon/`, and `src/toolchain/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs`.
-- Package status: `docs/specs/ecosystem/0029-PackageManagement.md` and `docs/plans/0020-package-manager.md`.
+- Package status: [package management](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md) and [the package manager plan](https://github.com/Nimblesite/osprey-packages/blob/main/docs/plans/0020-package-manager.md), in the package manager's repository.

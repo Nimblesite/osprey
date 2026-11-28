@@ -49,7 +49,7 @@ Background: [OCaml effects](https://ocaml.org/manual/5.5/effects.html), [Koka](h
 
 ## Embedded targets [TARGET-EMBEDDED-PLAN]
 
-Code for these targets is profiled on the device and optimised continuously, beside every item ([DEVICE-PERF]). The first consumer is the [Prism device](../specs/synth/Perception.md#perception-device-device).
+Code for these targets is profiled on the device and optimised continuously, beside every item ([DEVICE-PERF]). The first consumer is the [Prism device](https://github.com/Nimblesite/perception/blob/main/docs/specs/synth/Perception.md#perception-device-device).
 
 Cross-compiled ARM Linux executables [TARGET-EMBEDDED-LINUX]:
 

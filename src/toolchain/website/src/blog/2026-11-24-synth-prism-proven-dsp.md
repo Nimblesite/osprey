@@ -73,7 +73,7 @@ Osprey's own proof kernel checks every certificate in three builds: native code 
 
 ## What is proved today
 
-The [synthesis specification](/spec/synthdsp/) lists each theorem, the source it checks and the paper it comes from. Among them:
+The [synthesis specification](https://github.com/Nimblesite/perception/blob/main/docs/specs/synth/Synth.md) lists each theorem, the source it checks and the paper it comes from. Among them:
 
 - **Mixing:** sending x at gain g and y at gain h onto a bus gives g·x + h·y in either order, and the power of the mix follows Puckette's power-of-a-sum equation.
 - **Overlap-add:** the spectral engine's accumulator rebuilds an unchanged signal exactly when its window products sum to one, and only then (Smith's equation 9.44, in both directions). The periodic Hann window's squared values sum to 3/2 at a hop of N/4 and to 3 at a hop of N/8, which sets the normalising gains the code uses.

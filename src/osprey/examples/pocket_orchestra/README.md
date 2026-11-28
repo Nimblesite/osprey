@@ -30,7 +30,7 @@ The browser has semantic HTML buttons and a range control beside its canvas ribb
 
 Output configuration changes trigger an AVAudioEngine restart while retaining the session and held notes. A once-per-second health check retries temporary output failures.
 
-This delivery is macOS plus browser controllers. Native iOS/Android controllers, Windows hosting, the shared Osprey Native presentation, WebAssembly controller logic, selectable output devices, the performance stage remain planned. VST3 hosting remains a future adapter; no plug-in loading is implemented here. The full cross-platform acceptance matrix is in [the application specification](../../../../docs/specs/synth/Perception.md#pocket-orchestra-orchestra).
+This delivery is macOS plus browser controllers. Native iOS/Android controllers, Windows hosting, the shared Osprey Native presentation, WebAssembly controller logic, selectable output devices, the performance stage remain planned. VST3 hosting remains a future adapter; no plug-in loading is implemented here. The full cross-platform acceptance matrix is in [the application specification](https://github.com/Nimblesite/perception/blob/main/docs/specs/synth/Perception.md#pocket-orchestra-orchestra).
 
 ## Trust boundary [ORCHESTRA-NETWORK-TRUST]
 

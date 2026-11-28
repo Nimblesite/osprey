@@ -40,11 +40,5 @@
     "title": "Application frameworks",
     "description": "Reactive mobile applications, the proof workbench and its lessons, the Osprey Agent, host protocols, and the local coding model.",
     "kind": "support"
-  },
-  {
-    "slug": "synth",
-    "title": "Synthesis, Prism and devices",
-    "description": "The synthesis toolkit, the Prism daw, Pocket Orchestra, instruments and macros, and the hardware Prism device.",
-    "kind": "support"
   }
 ]

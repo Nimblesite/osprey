@@ -51,7 +51,7 @@ Lean is the reference oracle for the first compatible theory, not a mandatory de
 
 ## Registry `[TYPES-DISCIPLINE-REGISTRY]`
 
-A discipline is a package ([spec 0029](../ecosystem/0029-PackageManagement.md)) whose manifest declares one table:
+A discipline is a package ([spec 0029](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md)) whose manifest declares one table:
 
 ```toml
 [package]

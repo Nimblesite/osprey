@@ -70,7 +70,7 @@ Tooling lands with the stage that needs it, not after; this is the full set.
 ## Packages and security
 
 - [ ] Manifest and lock entries for packages that export expanders, and the project switch that refuses them [META-SECURITY].
-- [ ] Reword the "Install-time or build-time code execution" row of [PACKAGE-THREATS](../specs/ecosystem/0029-PackageManagement.md#threat-model-and-invariants-package-threats) to state the sandboxed compile-time exception, keeping invariant 4 as written.
+- [ ] Reword the "Install-time or build-time code execution" row of [PACKAGE-THREATS](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md#threat-model-and-invariants-package-threats) to state the sandboxed compile-time exception, keeping invariant 4 as written.
 - [ ] An attack suite first: expanders that try to read an undeclared file, reach the network, read the clock, exhaust memory, loop, and emit code that escapes hygiene. Check: each is refused with its diagnostic.
 
 ## Proof obligations

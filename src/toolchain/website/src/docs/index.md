@@ -56,7 +56,7 @@ Osprey checks proofs with its own kernel and uses [Lean as an oracle](/docs/proo
 
 - **[Package manager](/docs/package-manager/)** — publish to a folder registry, resolve and lock dependencies, build from verified source. Hosted publishing is planned.
 - **[Packages in VS Code](/docs/packages-in-vscode/)** — add and remove dependencies, see unverified-release warnings, fetch and build.
-- **[Package specification](/spec/0029-packagemanagement/)** — registry, manifests, resolution, locks, REST API and commands.
+- **[Package specification](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md)** — registry, manifests, resolution, locks, REST API and commands.
 
 ## Language
 

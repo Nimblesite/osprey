@@ -201,7 +201,7 @@ These contracts already move work to compile time or generate code. Each keeps i
 ## Packages and security `[META-SECURITY]`
 
 - A package that exports expanders says so in its manifest. A project that depends on it sees this in `osprey.toml` resolution and in the lock file, and may refuse expanders from a package.
-- Package invariant 4 ([PACKAGE-THREATS](../ecosystem/0029-PackageManagement.md#threat-model-and-invariants-package-threats)) holds: nothing in a package runs during fetch, install, lock, build-plan creation or activation. An expander runs only while compiling a module that invokes it.
+- Package invariant 4 ([PACKAGE-THREATS](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md#threat-model-and-invariants-package-threats)) holds: nothing in a package runs during fetch, install, lock, build-plan creation or activation. An expander runs only while compiling a module that invokes it.
 - An expander runs with no ambient authority. Its whole capability is its effect row ([META-EFFECTS-EXPANDER]) and its declared inputs, inside the sandbox of the [expansion engine](../compiler/ExpansionEngine.md#sandbox-expand-sandbox).
 - The identity of an expander (package, version, content hash) is part of every cache key and of the build's evidence, so a changed macro is a changed build.
 

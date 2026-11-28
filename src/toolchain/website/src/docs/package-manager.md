@@ -8,7 +8,7 @@ tags: [packages, registry, resolution]
 
 {% from "native-capture.njk" import capture %}
 
-An Osprey package is source code, published as a folder and pinned by the digest of its bytes. You add one, Osprey locks the exact release, checks every byte and builds it with no network. The client runs on macOS and Linux; Windows is not supported yet. The specs cover [manifests and commands](/spec/0029-packagemanagement/), [trust services](/spec/0030-packageregistrytrustanddiscovery/), the [domain model](/spec/0031-packagedomainmodel/) and [verification evidence](/spec/0032-packageevidenceanddiscovery/).
+An Osprey package is source code, published as a folder and pinned by the digest of its bytes. You add one, Osprey locks the exact release, checks every byte and builds it with no network. The client runs on macOS and Linux; Windows is not supported yet. The specs cover [manifests and commands](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md), [trust services](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0030-PackageRegistryTrustAndDiscovery.md), the [domain model](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0031-PackageDomainModel.md) and [verification evidence](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0032-PackageEvidenceAndDiscovery.md).
 
 ## Publishers and package ownership
 
@@ -278,7 +278,7 @@ Rows marked **Milestone B** are designed in spec 0029 `[PACKAGE-THREATS]` but no
 | Revoked or yanked releases | Milestone B: a monotonic signed status chain. Cached locks will survive a yank; a known revocation will block every build and activation except isolated audit reproduction. |
 | Local overrides leaking into releases | Development overlays live in separate files and locks; `build --release` fails on any override, duplicate key or unpinned input. |
 
-The registry does not yet prove who published a release or how fresh the catalog is; that is [spec 0030](/spec/0030-packageregistrytrustanddiscovery/).
+The registry does not yet prove who published a release or how fresh the catalog is; that is [spec 0030](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0030-PackageRegistryTrustAndDiscovery.md).
 
 ## Input validation and current limits
 

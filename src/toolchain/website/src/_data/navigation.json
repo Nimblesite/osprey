@@ -185,7 +185,7 @@
         },
         {
           "text": "Package specification",
-          "url": "/spec/0029-packagemanagement/"
+          "url": "https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md"
         }
       ]
     },

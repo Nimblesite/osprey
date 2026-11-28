@@ -17,7 +17,7 @@ acknowledgement, with credit to the reporter unless they ask otherwise.
   package frontend (`fetch`, `lock`, `verify`, `build`), the manifest and lock
   parsers and the resolver. Its threat model and the gates a report can test
   against are in
-  [spec 0029](docs/specs/ecosystem/0029-PackageManagement.md), sections
+  [spec 0029](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md), sections
   `[PACKAGE-THREATS]` and `[PACKAGE-HARDENING]`.
 - The VS Code extension and the website build.
 

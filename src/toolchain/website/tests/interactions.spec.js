@@ -292,7 +292,7 @@ test.describe("blog search and social metadata", () => {
 // these assert the SVG actually exists.
 test.describe("diagrams", () => {
   test("mermaid blocks render to SVG in dark theme", async ({ page }) => {
-    await page.goto("/spec/0029-packagemanagement/", { waitUntil: "domcontentloaded" });
+    await page.goto("/spec/0036-structuredconcurrency/", { waitUntil: "domcontentloaded" });
     const blocks = page.locator("figure.diagram pre.mermaid");
     await expect(blocks.first().locator("svg")).toBeVisible();
     // Mermaid renders the blocks one at a time, so wait until every block has its SVG.
@@ -314,7 +314,7 @@ test.describe("diagrams", () => {
   });
 
   test("no diagram ships as an unrendered code block", async ({ page }) => {
-    for (const path of ["/spec/0029-packagemanagement/", "/docs/web-apps/"]) {
+    for (const path of ["/spec/0036-structuredconcurrency/", "/docs/web-apps/"]) {
       await page.goto(path, { waitUntil: "domcontentloaded" });
       await expect(page.locator("figure.diagram, figure.diagram-type").first()).toBeVisible();
       await expect(page.locator("pre.mermaid:not(:has(svg))")).toHaveCount(0);
