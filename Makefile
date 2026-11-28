@@ -28,9 +28,9 @@ build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 	$(MAKE) _zed_build
 	cd $(EXT_DIR) && npm run compile
 
-## downstream: Lay the main branches of the split repositories, Nimblesite/osprey-packages and
-##             Nimblesite/perception, over this checkout (gitignored paths), for the tests that read
-##             them. Expect "downstream: <name> at main <commit>" for each. [REPO-SPLIT-CANARY]
+## downstream: The main branches of the split repositories in target/downstream: Nimblesite/osprey-packages
+##             with its released toolchain, Nimblesite/perception also laid over this checkout
+##             (gitignored paths), for the tests that read them. Expect "downstream: <name> at main <commit>" for each. [REPO-SPLIT-CANARY]
 .PHONY: downstream canaries
 downstream:
 	bash scripts/ci/downstream.sh
@@ -41,7 +41,7 @@ canaries: build downstream
 	$(MAKE) _canaries
 
 _canaries:
-	$(MAKE) -f scripts/make/osprey-packages.mk canary OSPREY_PREBUILT=1
+	$(MAKE) -C target/downstream/osprey-packages canary BIN=$(abspath $(BIN))
 	$(MAKE) -f scripts/make/perception.mk canary OSPREY_PREBUILT=1
 
 ## audit: Full dependency vulnerability scan; scanner errors and advisories fail.

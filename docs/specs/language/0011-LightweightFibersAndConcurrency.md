@@ -80,7 +80,7 @@ The rule is the same in every memory backend and on every target:
 
 A handle's finalizer runs inside the memory backend, which may hold its heap lock or have stopped every other thread. Running arbitrary cleanup there deadlocks or corrupts state, so a finalizer must not take locks or allocate and must hand its work to an ordinary thread ([Boehm, "Destructors, Finalizers, and Synchronization", POPL 2003](https://www.hboehm.info/popl03/web)). The finalizer therefore only pushes the fiber onto a lock-free list, a Treiber stack ([Treiber, IBM RJ 5118, 1986](https://dominoweb.draco.res.ibm.com/reports/rj5118.pdf)) whose single consumer takes the whole list at once, so no pop can meet a recycled node. The runtime drops those holds outside the collector, at the next `spawn` and at the end of `main`.
 
-The holder count is proved correct with Osprey's proof kernel. [`FiberLifetime.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberLifetime.lean) models a fiber as `live n` (`n + 1` holders) or `freed`, `held_hold` as `acquire` and `held_release` as `release`, and a step on a freed fiber as a use after free. `make _check_synthesis_proofs` exports ten theorems and requires the Osprey kernel built for gc, arc and wasm32 to accept each with no axioms:
+The holder count is proved correct with Osprey's proof kernel. [`FiberLifetime.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberLifetime.lean) models a fiber as `live n` (`n + 1` holders) or `freed`, `held_hold` as `acquire` and `held_release` as `release`, and a step on a freed fiber as a use after free. `make _check_fiber_proofs` exports ten theorems and requires the Osprey kernel built for gc, arc and wasm32 to accept each with no axioms:
 
 | Theorem | Claim |
 | --- | --- |
@@ -148,7 +148,7 @@ The report is a diagnostic: the exit status and the program's output do not chan
 
 A report is never a false alarm. Scanning conservatively only adds references, so a fiber that could be woken is always connected; one that is stuck may go unreported. A fiber waiting in `select`, or awaiting a fiber that is itself stuck, is not counted.
 
-[`FiberDeadlock.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberDeadlock.lean) proves the rule with Osprey's proof kernel, with no axioms, on the gc, arc and wasm32 kernels (`make _check_synthesis_proofs`). It models what a collection sees (the references each fiber holds, the references between objects, the channel each waiting fiber waits on) and everything a running fiber can do to it: store a reference it can name, hand one to another fiber, start waiting, and wake a waiter on a channel it can name.
+[`FiberDeadlock.lean`](../../../src/toolchain/benchmarks/proof/tools/FiberDeadlock.lean) proves the rule with Osprey's proof kernel, with no axioms, on the gc, arc and wasm32 kernels (`make _check_fiber_proofs`). It models what a collection sees (the references each fiber holds, the references between objects, the channel each waiting fiber waits on) and everything a running fiber can do to it: store a reference it can name, hand one to another fiber, start waiting, and wake a waiter on a channel it can name.
 
 | Theorem | Claim |
 | --- | --- |

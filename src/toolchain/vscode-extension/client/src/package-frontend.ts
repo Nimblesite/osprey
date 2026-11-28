@@ -1,6 +1,6 @@
 // The Osprey package frontend wire contract ([PACKAGE-API],
-// src/osprey/packages/manager/README.md). The frontend binary (`osprey-pkg`, built by
-// `osprey build src/osprey/packages/manager/cli`) has no argv builtin, so it reads ONE
+// osprey-packages src/manager/README.md). The frontend binary (`osprey-pkg`, built by
+// `osprey build src/manager/cli` in osprey-packages) has no argv builtin, so it reads ONE
 // command line from stdin; because that line splits on whitespace, paths with
 // spaces can never appear in it — the extension instead spawns with
 // `cwd` at the project root and passes `--project .`. The answer is one

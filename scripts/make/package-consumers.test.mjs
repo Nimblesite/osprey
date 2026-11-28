@@ -24,10 +24,9 @@ test('consumers are the projects whose source roots include the package source, 
 })
 
 test('the projects of a laid split repository consume the package too', { skip: !existsSync('target/downstream/perception/.git') && 'Perception is not laid: run make downstream' }, () => {
-  // [REPO-SPLIT-CANARY] Perception's daw, its test and render projects, laid by `make downstream`.
-  const synth = consumers('synth')
-  for (const dir of ['src/osprey/examples/daw', 'src/osprey/examples/daw/test', 'src/osprey/examples/daw/render']) {
-    assert.ok(synth.includes(dir), `${dir} consumes synth: ${synth}`)
+  // [REPO-SPLIT-CANARY] Perception studio, test and render projects consume json, laid by `make downstream`.
+  const json = consumers('json')
+  for (const dir of ['src/studio', 'src/studio/test', 'src/studio/render']) {
+    assert.ok(json.includes(dir), `${dir} consumes json: ${json}`)
   }
-  assert.ok(consumers('json').includes('src/osprey/examples/daw'), 'the daw also consumes json')
 })

@@ -1,4 +1,4 @@
-// The frontend wire contract ([PACKAGE-API], src/osprey/packages/manager/README.md): one
+// The frontend wire contract ([PACKAGE-API], osprey-packages src/manager/README.md): one
 // command line on stdin because the Osprey CLI has no argv builtin; the
 // answer is one canonical `{"lines":[…],"status":N}` JSON line followed by
 // the process's final `status: N` line. The editor requires the JSON's
