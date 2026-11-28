@@ -15,7 +15,7 @@ graphics:
 	$(MAKE) -C $(ROOT) _graphics-smoke
 
 ## storage: Storage's self-test in a real window on screen, each picture compared with its goldens and
-##          with what the screen shows. The same goes for agent, casting, flock, painting, probe, signal-flow, synth and tally;
+##          with what the screen shows. The same goes for agent, casting, flock, painting, probe, signal-flow, synth (Perception's Prism, laid by `make downstream`, CI only) and tally;
 ##          agent runs unsandboxed, its model a test double and its tools real, through its self-test.ps1.
 $(APPS):
 	$(APP_PS1) -App $@ -Test

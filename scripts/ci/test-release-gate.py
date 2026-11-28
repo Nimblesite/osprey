@@ -110,9 +110,7 @@ def package_result(text, platform, archives, empty_archive=""):
         root = pathlib.Path(directory)
         for folder in ("target/release", "src/toolchain/compiler/lib"):
             (root/folder).mkdir(parents=True)
-        for name in ("target/release/osprey", "target/osprey-pkg", "target/osprey-registry"):
-            (root/name).write_text("binary")
-        (root/"target/local-registry").mkdir()
+        (root/"target/release/osprey").write_text("binary")
         for name in (*NATIVE_ARCHIVES, *WASM_ARCHIVES, *archives):
             (root/"src/toolchain/compiler/lib"/name).write_text("" if name == empty_archive else "archive")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
@@ -136,6 +134,9 @@ def package_failures(text):
             print(f"  ok   {label}")
     if "run: make _runtime_ios _runtime_ios_sim _runtime_macos" not in text:
         failures.append("Darwin build must compile all supported Apple runtime archives")
+    # The package manager is Nimblesite/osprey-packages' to ship [REPO-SPLIT].
+    if re.search(r"cp [^\n]*(osprey-pkg|osprey-registry|package-workspace)|packages/manager|actions/downstream|package-workspace-wasm", text):
+        failures.append("the release builds or ships the package manager, which osprey-packages ships")
     return failures
 
 
@@ -152,9 +153,8 @@ def stage_fixture(root, target, version):
     (payload/"osprey").write_text("binary")
     with tarfile.open(root/"dist"/f"osprey-{version}-{target}.tar.gz", "w:gz") as archive:
         archive.add(payload, arcname=payload.name)
-    for name in ("package-workspace", "workbench"):
-        (root/"dist"/name).mkdir(parents=True)
-        (root/"dist"/name/f"{name}.wasm").write_text("wasm")
+    (root/"dist"/"workbench").mkdir(parents=True)
+    (root/"dist"/"workbench"/"workbench.wasm").write_text("wasm")
     for name in ("src/osprey/workbench/lessons/catalogue.json", "src/osprey/workbench/assets/workbench.css",
                  "src/toolchain/website/src/assets/images/logo.png", "scripts/proof/workbench-proof-assets.py"):
         file = root/name
@@ -233,32 +233,24 @@ def pin_failures(where, text, indent):
     """The MinGW clang pin step in `text`, and that it exports OSPREY_CC."""
     pin = re.search(rf"^{indent}- name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
     if pin is None:
-        return None, [f"{where}: pin MinGW clang before compiling the Windows package client"]
+        return [f"{where}: pin the MinGW clang"]
     block = text[pin.end():].split(f"{indent}- name:", 1)[0]
     if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
-        return pin, [f"{where}: export the pinned compiler as OSPREY_CC"]
-    return pin, []
+        return [f"{where}: export the pinned compiler as OSPREY_CC"]
+    return []
 
 
 def windows_compiler_failures():
-    """release.yml pins the MinGW clang itself; Windows CI pins it in the shared
-    toolchain action, which the package client's job sets up before compiling."""
+    """Windows CI pins the MinGW clang in the shared toolchain action, which the
+    canaries' job sets up before they compile."""
     failures = []
-    build_step = re.compile(r"^      - name: Compile package manager client(?: \(Windows\))?$", re.MULTILINE)
-    text = WORKFLOW.read_text()
-    pin, found = pin_failures(WORKFLOW, text, "      ")
-    build = build_step.search(text)
-    if pin is not None and (build is None or pin.start() >= build.start()):
-        found.append(f"{WORKFLOW}: pin MinGW clang before compiling the Windows package client")
-    failures += found
     ci = pathlib.Path(".github/workflows/ci-windows.yml")
     text = ci.read_text()
     setup = text.find(WINDOWS_TOOLCHAIN_STEP)
-    build = build_step.search(text)
+    build = re.search(r"^      - name: Both canaries$", text, re.MULTILINE)
     if setup == -1 or build is None or setup >= build.start():
-        failures.append(f"{ci}: pin MinGW clang before compiling the Windows package client")
-    failures += pin_failures(WINDOWS_TOOLCHAIN, WINDOWS_TOOLCHAIN.read_text(), "    ")[1]
-    return failures
+        failures.append(f"{ci}: pin MinGW clang before the Windows canaries compile")
+    return failures + pin_failures(WINDOWS_TOOLCHAIN, WINDOWS_TOOLCHAIN.read_text(), "    ")
 
 
 def main():
@@ -272,7 +264,7 @@ def main():
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("Windows compiler selection: OK (CI and release)")
+    print("Windows compiler selection: OK (CI)")
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
     print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2} cases)")
     print("release workbench proof staging: OK")

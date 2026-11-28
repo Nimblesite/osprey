@@ -10,9 +10,9 @@
 .PHONY: build test lint fmt clean ci setup run install \
 	\
 	_language-test _deslop _gpu-demo _graphics-shader \
-	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
+	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _canaries \
 	_runtime_klee _test_hunt_mock \
-	_vsix_rebuild_reinstall _vsix_windows_tools _vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
+	_vsix_rebuild_reinstall _vsix_windows_tools _vsix_clean _vsix_bundle _vsix_bundle_packages _vsix_package_design _vsix_package _vsix_install _graphics _graphics-smoke
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -49,7 +49,7 @@ endif
 COVERAGE_THRESHOLDS_FILE ?= src/osprey/tests/coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
-MAKE_FOLDERS ?= src/toolchain src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/toolchain/targets/ios src/toolchain/targets/ios/tests src/toolchain/targets/android src/toolchain/targets/android/tests src/toolchain/targets/web src/toolchain/targets/web/tests src/toolchain/targets/llms src/toolchain/targets/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/osprey-native-website src/osprey/examples/daw/website src/toolchain/benchmarks src/osprey/examples/proof
+MAKE_FOLDERS ?= src/toolchain src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/toolchain/targets/ios src/toolchain/targets/ios/tests src/toolchain/targets/android src/toolchain/targets/android/tests src/toolchain/targets/web src/toolchain/targets/web/tests src/toolchain/targets/llms src/toolchain/targets/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/osprey-native-website src/toolchain/benchmarks src/osprey/examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
 # (osprey searches src/toolchain/compiler/bin at --run time).

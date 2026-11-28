@@ -53,10 +53,10 @@ suite("workbench bundle completeness", () => {
   let root: string;
   let assets: string;
   const extension = path.resolve(__dirname, "../../..");
-  const verify = () => spawnSync(process.execPath, [path.join(root, "scripts/verify-package-client.mjs")],
+  const verify = (...args: string[]) => spawnSync(process.execPath, [path.join(root, "scripts/verify-package-client.mjs"), ...args],
     { encoding: "utf8", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
   const registryCheck = (problem: string): void => {
-    const result = verify(), required = process.platform !== "win32";
+    const result = verify("--packages"), required = process.platform !== "win32";
     assert.strictEqual(result.status, required ? 1 : 0, result.stderr);
     if (required) assert.ok(result.stderr.includes(problem), result.stderr);
   };
@@ -100,13 +100,29 @@ suite("workbench bundle completeness", () => {
     const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "vscode:prepublish"],
       { cwd: root, encoding: "utf8", shell: process.platform === "win32", env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" } });
     assert.equal(result.status, 0, result.stdout + result.stderr);
-    for (const name of ["Package workspace", "Workbench"]) assert.ok(result.stdout.includes(`${name} live wasm frame: PASS`), result.stdout);
+    assert.ok(result.stdout.includes("Workbench live wasm frame: PASS"), result.stdout);
+    assert.ok(!result.stdout.includes("Package workspace live wasm frame"), "the shipped bundle has no package workspace [REPO-SPLIT]");
     for (const name of ["wasi", "wasi-runner", "wasi-worker"]) assert.ok(fs.statSync(path.join(root, "out/client/src/osprey-ui", `${name}.js`)).size > 0);
+  });
+
+  test("the shipped bundle needs no package manager; its CI test fixtures need all of it", () => {
+    // [REPO-SPLIT] The package manager is Nimblesite/osprey-packages' to ship.
+    const bundle = path.dirname(assets), exe = process.platform === "win32" ? ".exe" : "";
+    const parts = [`osprey-pkg${exe}`, `osprey-registry${exe}`, "package-workspace.wasm"].map((name) => path.join(bundle, name));
+    const saved = parts.map((file) => fs.readFileSync(file));
+    assert.equal(verify("--packages").status, 0, "the staged fixtures are complete");
+    for (const file of parts) fs.rmSync(file);
+    assert.equal(verify().status, 0, "a bundle without the package manager ships");
+    const missing = verify("--packages");
+    assert.notEqual(missing.status, 0, "the CI test fixtures require the package client");
+    assert.ok(missing.stderr.includes("Missing package client"), missing.stderr);
+    parts.forEach((file, index) => fs.writeFileSync(file, saved[index]));
+    assert.equal(verify("--packages").status, 0, "restaging the fixtures restores them");
   });
 
   test("packaging requires the local-registry server and refuses bundled packages", () => {
     const bundle = path.dirname(assets), server = path.join(bundle, process.platform === "win32" ? "osprey-registry.exe" : "osprey-registry");
-    assert.equal(verify().status, 0, "a server without packages is a complete bundle");
+    assert.equal(verify("--packages").status, 0, "a server without packages is a complete bundle");
     fs.rmSync(server);
     registryCheck("Missing bundled local registry server");
     fs.writeFileSync(server, "fixture");
@@ -114,7 +130,7 @@ suite("workbench bundle completeness", () => {
     fs.mkdirSync(packages, { recursive: true });
     registryCheck("The VSIX bundles no packages");
     fs.rmSync(path.join(bundle, "registry"), { recursive: true });
-    assert.equal(verify().status, 0, "removing the packages restores the bundle");
+    assert.equal(verify("--packages").status, 0, "removing the packages restores the bundle");
   });
 
   test("packaging rejects a missing WASI worker runtime module", () => {

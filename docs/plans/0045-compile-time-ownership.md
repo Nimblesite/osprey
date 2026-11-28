@@ -1,5 +1,8 @@
 # Plan 0045 — Memory safety
 
+BE EXTREMELY CAREFUL NOT TO VIOLATE YOUR USER AGREEMENT
+LOOK UP WHAT IS OR ISN'T ALLOWED
+
 Make every supported backend memory-safe without source-level ownership annotations: compile-time ownership accepts a program only when it proves one owner per allocation and a live lender for every borrow, and lowers those proofs to exact cleanup; runtime hardening bounds runaway heaps and ends process trees with their runners; the emitted code is proved in the proof kernel; and KLEE symbolic bug hunting sweeps the corpus for what the proofs do not cover.
 
 Contracts: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#compile-time-ownership-mem-ownership-static) with its parameter, borrow, closure, path, sharing, fiber, handle, host, model and verification sub-contracts; [MEM-OWNERSHIP], [MEM-OPAQUE], [MEM-BACKENDS], [MEM-BACKENDS-CUSTOM], [MEM-BACKENDS-SHARED], [MEM-BACKENDS-FINALIZERS] and [MEM-FIBER-ISOLATION] in the same spec; the runtime contracts [MEM-HEAP-CEILING], [MEM-GC-SAFEPOINT], [RUN-PARENT-DEATH], [CONCURRENCY-FIBER-LIFETIME], [CONCURRENCY-CHANNEL-LIFETIME], [CONCURRENCY-DEADLOCK], [CONCURRENCY-WASM], [CONCURRENCY-HANDLES] and [CONCURRENCY-CHANNEL]; [IR-LEAN] and [IR-LEAN-ATOMIC] in [Ir to Lean](../specs/tooling/IrToLean.md); and the `[SYMEX-*]` contracts in [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md) and [KLEE code generation](../specs/compiler/KleeCodegen.md).

@@ -16,7 +16,7 @@
 > data plane. It is not needed to build, run, or use a registry, and it never
 > replaces the folder registry.
 
-**Status:** normative target; implementation is in progress under [`src/osprey/packages/manager/`](../../../src/osprey/packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](PackageResearchBasis.md).
+**Status:** normative target; implementation is in progress under [`src/osprey/packages/manager/`](https://nimblesite.github.io/osprey-packages/), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](PackageResearchBasis.md).
 
 This specification defines a source-derived, content-addressed package system.
 It deliberately rejects uploaded archives, publisher binaries, lifecycle hooks,
@@ -559,7 +559,7 @@ own packages:
   passes the same source, capability and digest checks the server applies. A
   package that fails them, such as one with a raw `extern` declaration under
   `[PACKAGE-CAPABILITY-CONFINEMENT]`, is reported and not staged.
-  `scripts/packages/stage-local-registry.sh` does this and `make -C src/osprey/packages registry-serve` serves
+  `scripts/packages/stage-local-registry.sh` does this and osprey-packages' `make -f scripts/make/osprey-packages.mk registry-serve` serves
   the result on `http://127.0.0.1:8787`, the client's default registry.
 - **Editor.** The VS Code extension bundles the server (`osprey-registry`) and
   the staged root (`bin/<platform>/registry/`). Its *Start Local Package

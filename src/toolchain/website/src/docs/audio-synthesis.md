@@ -42,7 +42,7 @@ export curve (level, threshold, ratio, knee) =
 export reduction (level, threshold, ratio, knee) = curve (level, threshold, ratio, knee) - level
 ```
 
-The bus applies the curve and smooths the result for each sample. [Bus mixer](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/daw/src/bus_mix.ospml)
+The bus applies the curve and smooths the result for each sample. [Bus mixer](https://nimblesite.github.io/perception/)
 
 ```ospml
 reduced (c, attack, release, run, key) =

@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script>try{var t=localStorage.getItem("osprey-native-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t);}catch(e){}</script>
   <title>{{ title }}{% if title != "Osprey Native" %} | Osprey Native{% endif %}</title>
   <meta name="description" content="{{ description or 'Build real native apps for macOS, Windows, iOS, Android, and Web. Render genuine SwiftUI, WinUI, and Android controls or a Custom Canvas from one AOT codebase.' }}">
   <link rel="icon" type="image/svg+xml" href="{{ 'assets/brand/favicon.svg' | assetUrl }}">
@@ -25,7 +26,7 @@
         <span>Osprey Native</span>
       </a>
 
-      <nav class="site-nav" aria-label="Primary">
+      <nav class="site-nav" id="primary-nav" aria-label="Primary">
         <ul>
           <li><a href="/#features">Features</a></li>
           <li><a href="/#videos">Showcase</a></li>
@@ -40,6 +41,9 @@
         <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false" aria-label="Switch color theme">
           <span aria-hidden="true" id="theme-icon">&#9680;</span>
           <span id="theme-label">Theme: Auto</span>
+        </button>
+        <button type="button" class="nav-toggle" id="nav-toggle" data-menu-toggle="primary-nav" aria-expanded="false" aria-controls="primary-nav" aria-label="Toggle navigation menu">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </button>
       </div>
     </div>
@@ -81,7 +85,7 @@
         </div>
       </div>
       <p class="footer-note">
-        MIT Licensed &middot; Part of the <a href="https://www.ospreylang.dev/">Osprey</a> ecosystem.
+        &copy; 2026 <a href="https://nimblesite.co">NIMBLESITE PTY LTD</a> &middot; MIT Licensed &middot; Part of the <a href="https://www.ospreylang.dev/">Osprey</a> ecosystem.
       </p>
     </div>
   </footer>

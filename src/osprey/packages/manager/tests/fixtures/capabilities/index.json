@@ -1,8 +1,0 @@
-{
-  "spec": "[PACKAGE-CAPABILITY-CONFINEMENT]",
-  "description": "Every capability-confinement fixture in this folder.",
-  "cases": [
-    "builtins",
-    "sample-surfaces"
-  ]
-}

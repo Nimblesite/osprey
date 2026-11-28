@@ -109,8 +109,6 @@ jobs:
               ./target/release/osprey test src/osprey/examples/gpui/flock/test
               ./target/release/osprey test src/osprey/examples/gpui/painting/test
               ./target/release/osprey test src/osprey/examples/storage/test
-          - part: DAW
-            run: make -C src/toolchain/targets/tests synth APP_SUITE_PREBUILT=1
     steps:
       - uses: actions/checkout@v7
 

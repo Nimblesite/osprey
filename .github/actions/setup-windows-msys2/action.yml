@@ -13,8 +13,10 @@ runs:
         msystem: UCRT64
         path-type: inherit
         update: true
+        # vim carries xxd: Perception's canary hands each shell line to MSYS2's sh as hex.
         install: >-
           make
+          vim
           mingw-w64-ucrt-x86_64-gcc
           mingw-w64-ucrt-x86_64-clang
           mingw-w64-ucrt-x86_64-llvm

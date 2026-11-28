@@ -4,8 +4,12 @@ layout: layouts/base.njk
 <div class="docs-page">
   <div class="site-container docs-shell">
     <aside class="docs-sidebar" aria-label="Documentation">
-      <p class="docs-sidebar-heading">Getting Started</p>
-      <nav aria-label="Docs navigation">
+      <button type="button" class="docs-menu-toggle" id="docs-menu-toggle" data-menu-toggle="docs-nav-panel" aria-expanded="false" aria-controls="docs-nav-panel">
+        <span>Docs Menu</span>
+        <span class="docs-menu-chevron" aria-hidden="true">&#9662;</span>
+      </button>
+      <nav id="docs-nav-panel" class="docs-nav-panel" aria-label="Docs navigation">
+        <p class="docs-sidebar-heading">Getting Started</p>
         <ul class="docs-nav-list">
           <li><a href="/docs/"{% if page.url == '/docs/' %} aria-current="page"{% endif %}>Overview &amp; Get Started</a></li>
           <li><a href="/docs/first-app/"{% if page.url == '/docs/first-app/' %} aria-current="page"{% endif %}>Build Your First App</a></li>

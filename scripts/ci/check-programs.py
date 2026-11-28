@@ -13,10 +13,11 @@ a program: it serves only the optional tsc lint ([FLAVOR-TS-SELECT]). Files unde
 Left out, each checked elsewhere: failscompilation/ (must be rejected: the
 book's .expectederror goldens and osprey-cli's examples_compile), and the
 registry data (sample-registry/, e2e/consumer/, fixtures/manifests/), which
-resolves only through a registry and is built by make _test_registry, and the
+resolves only through a registry and is built by osprey-packages' _test_registry, and the
 errors prelude unit, which declares the built-in IndexOutOfBounds no program may
 redeclare and is checked attached to every program that reads a list
-([BUILTIN-LIST-GET]). The editor hides the same set: keep `osprey.diagnostics.exclude`
+([BUILTIN-LIST-GET]). Only tracked files are programs: the split repositories run this over their own
+files in their CI ([REPO-SPLIT]). The editor hides the same set: keep `osprey.diagnostics.exclude`
 in .vscode/settings.json in step with EXCLUDED.
 Run: OSPREY_BIN=<compiler> osprey scripts/ci/check-programs.py --run
 """
