@@ -216,12 +216,9 @@ _test_proof_unicode:
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)
 
-# [SYNTH-DSP-PROOFS] [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-DEADLOCK] Check the current source
+# [CONCURRENCY-FIBER-LIFETIME] [CONCURRENCY-DEADLOCK] Check the current source
 # exports with the Osprey kernel: every theorem must PASS with no axioms.
-.PHONY: _test_synthesis_proofs
-SYNTHESIS_THEOREMS := weightedOverlapAdd travelingWavePropagation additivePeriod overlapNormalizationNecessary interpolatorFactor interpolatorEndpoints interpolatorConstant zeroPulseIndices hannEndpoints
-SYNTHESIS_THEOREMS += allpassMagnitude allpassRecurrence antiderivativeAverage antiderivativeOffset antiderivativeConstantCurve hannQuarterEnergy hannEighthEnergy
-SYNTHESIS_THEOREMS += radixTwoSplit radixTwoUpper realBinConjugate binAdditive binHomogeneous
+.PHONY: _test_fiber_proofs
 FIBER_LIFETIME_THEOREMS := run_valid freed_iff freed_is_final spawn_then_both_release dead_list_conserves drained_releases_each_once
 FIBER_LIFETIME_THEOREMS += channel_then_handle_release share_is_acquire free_is_release free_last_iff
 # The FiberLifetime mutants: each edit breaks a claim, and its mark proves it applied.
@@ -237,8 +234,8 @@ FIBER_DEADLOCK_THEOREMS := step_keeps_known step_keeps_live step_keeps_stuck stu
 FIBER_WAKE_EDIT := s/: Runs w g → Reach w g c → w.waits f c →/: Runs w g → w.waits f c →/
 FIBER_WAKE_MARK := : Runs w g → w.waits f c →
 
-_test_synthesis_proofs: $(PROOF_BATCH_TARGETS)
-	$(MAKE) _check_synthesis_proofs
+_test_fiber_proofs: $(PROOF_BATCH_TARGETS)
+	$(MAKE) _check_fiber_proofs
 
 # $(call kernel_check_theorems,<Lean module>,<theorem names>): every theorem
 # replays in the Osprey kernel built for gc, arc and wasm32, with no axioms.
@@ -268,13 +265,11 @@ define kernel_rejects_mutant
 	@echo "REJECTED $(1) $(2) mutant ($(5))"
 endef
 
-.PHONY: _check_synthesis_proofs
-_check_synthesis_proofs:
-	$(call kernel_check_theorems,Synthesis,$(SYNTHESIS_THEOREMS))
+.PHONY: _check_fiber_proofs
+_check_fiber_proofs:
 	$(call kernel_check_theorems,FiberLifetime,$(FIBER_LIFETIME_THEOREMS))
 	$(call kernel_rejects_mutant,FiberLifetime,leak,$(FIBER_LEAK_EDIT),$(FIBER_LEAK_MARK),the last release keeps the fiber - #359)
 	$(call kernel_rejects_mutant,FiberLifetime,lost,$(FIBER_LOST_EDIT),$(FIBER_LOST_MARK),a drain loses the handles it took)
 	$(call kernel_rejects_mutant,FiberLifetime,early,$(FIBER_EARLY_EDIT),$(FIBER_EARLY_MARK),a shared handle is freed under its last sharer)
 	$(call kernel_check_theorems,FiberDeadlock,$(FIBER_DEADLOCK_THEOREMS))
 	$(call kernel_rejects_mutant,FiberDeadlock,wake,$(FIBER_WAKE_EDIT),$(FIBER_WAKE_MARK),a fiber wakes a waiter on a channel it cannot name)
-	@bash scripts/proof/production-fft.sh

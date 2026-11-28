@@ -410,7 +410,7 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
     let binary = root.join("daw");
     let built = run(&[
         "build".into(),
-        "src/osprey/examples/daw/render".into(),
+        "src/studio/render".into(),
         "--memory=arc".into(),
         "--no-warnings".into(),
         "-o".into(),
@@ -425,24 +425,14 @@ fn the_daw_renderer_exits_one_on_every_failure_and_zero_when_it_writes() -> Test
     refused(
         &daw(
             &binary,
-            &[
-                "src/osprey/examples/daw/tracks/elise-motif.json",
-                &folder,
-                "x",
-                "4",
-            ],
+            &["src/studio/tracks/elise-motif.json", &folder, "x", "4"],
         ),
         "usage: daw",
     );
     refused(
         &daw(
             &binary,
-            &[
-                "src/osprey/examples/daw/tracks/elise-motif.json",
-                &folder,
-                "0",
-                "-4",
-            ],
+            &["src/studio/tracks/elise-motif.json", &folder, "0", "-4"],
         ),
         "usage: daw",
     );
@@ -533,7 +523,7 @@ fn assert_device_drain(binary: &Path, song: &Path, folder: &Path) -> TestResult 
     Ok(())
 }
 
-const CODEX_SCORE: &str = "src/osprey/examples/daw/tracks/codex-version.json";
+const CODEX_SCORE: &str = "src/studio/tracks/codex-version.json";
 
 /// Hold the actual 160-frame producer at each device receipt so cache publication is deterministic.
 fn opening_packets(
@@ -602,12 +592,7 @@ fn assert_late_note_pickup(binary: &Path, folder: &Path) -> TestResult {
 fn assert_rendered_excerpt(binary: &Path, folder: &str) -> TestResult {
     let written = daw(
         binary,
-        &[
-            "src/osprey/examples/daw/tracks/elise-motif.json",
-            folder,
-            "0",
-            "1",
-        ],
+        &["src/studio/tracks/elise-motif.json", folder, "0", "1"],
     );
     assert_eq!(
         written.code,

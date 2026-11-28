@@ -753,12 +753,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # The production FFT proof reads Perception's arrange_math.ospml.
-      - name: Lay Perception (Nimblesite/perception)
-        uses: ./.github/actions/downstream
-        with:
-          name: perception
-
       - name: Setup Osprey toolchain (no rebuild)
         uses: ./.github/actions/setup-osprey-compiler
         with:
@@ -848,8 +842,8 @@ jobs:
       - name: Full proof acceptance and Lean speed gate
         run: make -j3 _test_proof_ci
 
-      - name: Verify synthesis properties against production Osprey
-        run: make _check_synthesis_proofs
+      - name: Fiber lifetime and deadlock proofs, with their rejected mutants
+        run: make _check_fiber_proofs
 
   test-c-runtime:
     name: "Tests: C runtime (coverage)"

@@ -131,6 +131,22 @@ jobs:
         if: runner.os == 'macOS'
         run: make _runtime_ios _runtime_ios_sim _runtime_macos
 
+      # `osprey hunt` links this bitcode and its GC-root pass at run time
+      # [SYMEX-RUNTIME-BITCODE]. `_runtime_klee` skips quietly without KLEE, so
+      # a release built without it shipped a hunt that could find nothing
+      # (#443): require the files here.
+      - name: Build Hunt's symbolic runtime (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew="$(command -v brew || echo /home/linuxbrew/.linuxbrew/bin/brew)"
+          "$brew" install klee
+          make _runtime_klee
+          for file in libosprey_runtime_klee_gc.bc libosprey_runtime_klee_arc.bc libosprey_gc_roots.so; do
+            [ -s "src/toolchain/compiler/bin/$file" ] || { echo "::error::$file was not built"; exit 1; }
+          done
+
       # ---- Windows: MSYS2 (MinGW C runtime) + cargo -------------------------
       - name: Install Rust (Windows)
         if: runner.os == 'Windows'
@@ -232,6 +248,9 @@ jobs:
             }
           done
           if [[ "$plat" == linux-* || "$plat" == darwin-* ]]; then
+            for file in libosprey_runtime_klee_gc.bc libosprey_runtime_klee_arc.bc libosprey_gc_roots.so; do
+              cp "src/toolchain/compiler/bin/$file" "dist/$staging/"
+            done
             for archive in libosprey_runtime_wasm_arc.a libosprey_runtime_wasm_ownership.a; do
               [ -s "dist/$staging/$archive" ] || {
                 echo "::error::$archive missing from $staging"
@@ -257,6 +276,12 @@ jobs:
           # brew/scoop jobs is unaffected.
           sha256() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$@"; else sha256sum "$@"; fi; }
           ( cd dist && sha256 "$staging.tar.gz" | tee "$staging.tar.gz.sha256" )
+
+      # [SYMEX-INSTALL] Hunt from the unpacked tarball, never the build tree (#443).
+      - name: Smoke-test Hunt from the tarball (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: scripts/ci/hunt-tarball-smoke.sh "dist/osprey-${{ needs.version.outputs.version }}-${{ matrix.platform }}.tar.gz"
 
       - uses: actions/upload-artifact@v7
         with:

@@ -97,22 +97,26 @@ NATIVE_ARCHIVES = tuple(f"lib{name}{mode}.a" for name in ("fiber_runtime", "http
                         for mode in ("_ownership", "_gc", "_arc"))
 # Linux and macOS tarballs carry the wasm32 runtimes too (#420).
 WASM_ARCHIVES = ("libosprey_runtime_wasm_arc.a", "libosprey_runtime_wasm_ownership.a")
+# Hunt's symbolic runtime ships in every Linux and macOS tarball (#443).
+HUNT_RUNTIME = ("libosprey_runtime_klee_gc.bc", "libosprey_runtime_klee_arc.bc", "libosprey_gc_roots.so")
 APPLE_ARCHIVES = tuple(f"libosprey_runtime_{target}{mode}.a" for target in ("ios", "ios_sim", "macos")
                        for mode in ("_ownership", "_arc"))
 
 
-def package_result(text, platform, archives, empty_archive=""):
+def package_result(text, platform, archives, empty_archive="", hunt=HUNT_RUNTIME):
     script = step_script(text, "Package")
     for key, value in {"needs.version.outputs.version": "0.0.0-test", "matrix.platform": platform,
                        "runner.os": "macOS" if platform.startswith("darwin") else "Linux"}.items():
         script = script.replace("${{ " + key + " }}", value)
     with tempfile.TemporaryDirectory(prefix="osprey-release-") as directory:
         root = pathlib.Path(directory)
-        for folder in ("target/release", "src/toolchain/compiler/lib"):
+        for folder in ("target/release", "src/toolchain/compiler/lib", "src/toolchain/compiler/bin"):
             (root/folder).mkdir(parents=True)
         (root/"target/release/osprey").write_text("binary")
         for name in (*NATIVE_ARCHIVES, *WASM_ARCHIVES, *archives):
             (root/"src/toolchain/compiler/lib"/name).write_text("" if name == empty_archive else "archive")
+        for name in hunt:
+            (root/"src/toolchain/compiler/bin"/name).write_text("runtime")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
                               capture_output=True, text=True)
 
@@ -132,6 +136,15 @@ def package_failures(text):
             failures.append(f"{label}: unexpected packaging result\n{result.stdout}{result.stderr}")
         else:
             print(f"  ok   {label}")
+    for platform, archives in (("linux-x64", ()), ("darwin-arm64", APPLE_ARCHIVES)):
+        for missing in HUNT_RUNTIME:
+            label = f"{platform} missing {missing}"
+            result = package_result(text, platform, archives,
+                                    hunt=tuple(name for name in HUNT_RUNTIME if name != missing))
+            if result.returncode == 0:
+                failures.append(f"{label}: packaged without Hunt's runtime")
+            else:
+                print(f"  ok   {label}")
     if "run: make _runtime_ios _runtime_ios_sim _runtime_macos" not in text:
         failures.append("Darwin build must compile all supported Apple runtime archives")
     # The package manager is Nimblesite/osprey-packages' to ship [REPO-SPLIT].
@@ -253,7 +266,7 @@ def main():
         return 1
     print("Windows compiler selection: OK (CI)")
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
-    print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2} cases)")
+    print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2 + 2 * len(HUNT_RUNTIME)} cases)")
     print("release workbench proof staging: OK")
     return 0
 

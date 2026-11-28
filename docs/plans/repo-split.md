@@ -71,7 +71,6 @@ ospreylang CI runs, on every build, from each split repo's `main`:
 - `winui`: Prism's `synth.dll` built and self-tested on Windows with the other apps.
 - `test-rust`: the compiler-side tests that use the split code, unchanged: the editor's wasm boundary build, the daw song renders, and the ambient builtin inventory against the registry's `surface.osp`.
 - `build` and `test-extension`: the package client, registry server, package workspace and registry design, staged only for the extension's package tests (`_vsix_bundle_packages`, `_vsix_package_design`, `VSIX_PACKAGES=1`).
-- `test-proof`: the production FFT proof over the daw's `arrange_math.ospml`.
 
 These were **removed from ospreylang CI** and run only in their own repo: `build-registry-hosted`, `test-registry-gc`, `test-registry-arc` and `test-registry-hosted` (now osprey-packages' `build`, `test` and `test-hosted`), the GPUI DAW part, and the daw, Prism and VST targets in the platform Makefiles.
 

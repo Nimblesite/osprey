@@ -118,7 +118,7 @@ The code turns the dial position (from −1 for full left to 1 for full right) i
 panLeft(pan)² + panRight(pan)² = 1      at every position of the dial
 ```
 
-This is true because of a fact about circles, known since Pythagoras: for any angle, cosine squared plus sine squared equals one. Here is the theorem, simplified for reading ([full version](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/proof/tools/ProductionSpectral.lean.in)):
+This is true because of a fact about circles, known since Pythagoras: for any angle, cosine squared plus sine squared equals one. Here is the theorem, simplified for reading ([full version](https://github.com/Nimblesite/perception/blob/main/src/toolchain/benchmarks/proof/tools/ProductionSpectral.lean.in)):
 
 ```lean
 theorem panEqualPower (pan : α)
@@ -126,9 +126,9 @@ theorem panEqualPower (pan : α)
     panLeft pan * panLeft pan + panRight pan * panRight pan = 1
 ```
 
-Line by line: for any dial position `pan`, assuming the circle fact holds for every angle `θ`, the left power plus the right power equals one. The `panLeft` and `panRight` in this theorem are not copies. [synth_proof.rs](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/crates/osprey-syntax/examples/synth_proof.rs) reads them out of the shipped Osprey file each time the proofs run.
+Line by line: for any dial position `pan`, assuming the circle fact holds for every angle `θ`, the left power plus the right power equals one. The `panLeft` and `panRight` in this theorem are not copies. [synth_proof.rs](https://github.com/Nimblesite/perception/blob/main/src/toolchain/crates/osprey-syntax/examples/synth_proof.rs) reads them out of the shipped Osprey file each time the proofs run.
 
-To break it on purpose, [production-fft.sh](https://github.com/Nimblesite/osprey/blob/main/scripts/proof/production-fft.sh) changes the last digit of the right channel's constant. The two speakers then use slightly different angles, the loudness drifts as the dial turns, and the proof fails, as it must.
+To break it on purpose, [production-fft.sh](https://github.com/Nimblesite/perception/blob/main/scripts/proof/production-fft.sh) changes the last digit of the right channel's constant. The two speakers then use slightly different angles, the loudness drifts as the dial turns, and the proof fails, as it must.
 
 {{ capture("/assets/images/native/prism-mix-bus.webp", "Prism Mix page: tracks routed to group buses, a kick-keyed compressor, the Space reverb and Master", "Prism's Mix page. Mixing tracks together and the pan law are both proved against the Osprey source that runs here.", 1400, 914) }}
 
@@ -181,9 +181,9 @@ The same checkers are now used at the frontier of mathematics. OpenAI published 
 | Ownership rules | [OwnershipLedger.lean](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/proof/tools/OwnershipLedger.lean), [ownership-ledger.sh](https://github.com/Nimblesite/osprey/blob/main/scripts/proof/ownership-ledger.sh) |
 | Proofs about compiled code | [OwnershipLowering.lean.in](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/proof/tools/OwnershipLowering.lean.in), [ownership-lowering.sh](https://github.com/Nimblesite/osprey/blob/main/scripts/proof/ownership-lowering.sh) |
 | IR to Lean | [@osprey/xdsl](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/xdsl/src), [ir_lean](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/proof/ir_lean/src), [LlvmSubset](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/benchmarks/proof/tools/LlvmSubset), [ir-lean.sh](https://github.com/Nimblesite/osprey/blob/main/scripts/proof/ir-lean.sh) |
-| Audio proofs | [synth_proof.rs](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/crates/osprey-syntax/examples/synth_proof.rs), [Synthesis.lean](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/proof/tools/Synthesis.lean), [ProductionSpectral.lean.in](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/proof/tools/ProductionSpectral.lean.in), [ProductionWaveshaper.lean.in](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/proof/tools/ProductionWaveshaper.lean.in), [production-fft.sh](https://github.com/Nimblesite/osprey/blob/main/scripts/proof/production-fft.sh) |
+| Audio proofs | [synth_proof.rs](https://github.com/Nimblesite/perception/blob/main/src/toolchain/crates/osprey-syntax/examples/synth_proof.rs), [Synthesis.lean](https://github.com/Nimblesite/perception/blob/main/src/toolchain/benchmarks/proof/tools/Synthesis.lean), [ProductionSpectral.lean.in](https://github.com/Nimblesite/perception/blob/main/src/toolchain/benchmarks/proof/tools/ProductionSpectral.lean.in), [ProductionWaveshaper.lean.in](https://github.com/Nimblesite/perception/blob/main/src/toolchain/benchmarks/proof/tools/ProductionWaveshaper.lean.in), [production-fft.sh](https://github.com/Nimblesite/perception/blob/main/scripts/proof/production-fft.sh) |
 
-To run the proofs yourself, use `make _test_ownership_proof` and `make _test_synthesis_proofs`.
+To run the proofs yourself, use `make _test_ownership_proof` and `make _test_fiber_proofs` here, and `make _synth-proofs` in [Perception](https://github.com/Nimblesite/perception) for the audio proofs.
 
 ## Read more
 
