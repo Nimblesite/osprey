@@ -46,7 +46,7 @@ Say all three together, in this order, on first mention. Dropping them from the 
 
 ## Osprey Native
 
-**Osprey Native (`@osprey/native`) is a headline feature.** One Osprey app (state, logic and UI) compiles ahead of time to native code. Each host draws it with the platform's own widgets (SwiftUI, WinUI, Android) or on a GPU canvas (GPUI). Say the difference concretely: Flutter and Compose Multiplatform draw their own copies of the widgets; React Native runs JavaScript in an engine. Show the real apps, and name which hosts run which app.
+**Osprey Native (`@osprey/native`) is a headline feature.** One Osprey app (state, logic and UI) compiles ahead of time to native code. Each host draws it with the platform's own widgets (SwiftUI, WinUI, Android) or on a GPU canvas (FerroUI, the preferred renderer; GPUI is retired). Say the difference concretely: Flutter and Compose Multiplatform draw their own copies of the widgets; React Native runs JavaScript in an engine. Show the real apps, and name which hosts run which app.
 
 ## Show one move: same logic, different handler
 

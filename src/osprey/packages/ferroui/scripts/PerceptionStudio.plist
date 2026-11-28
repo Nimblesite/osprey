@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleName</key><string>Perception Studio</string>
+<key>CFBundleDisplayName</key><string>Perception Studio</string>
+<key>CFBundleExecutable</key><string>PerceptionStudio</string>
+<key>CFBundleIdentifier</key><string>dev.ospreylang.perception-studio</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleIconFile</key><string>AppIcon.icns</string>
+<key>NSHighResolutionCapable</key><true/>
+</dict></plist>

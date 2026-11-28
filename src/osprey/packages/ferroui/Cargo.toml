@@ -1,0 +1,55 @@
+# FerroUI's `ferroui-osprey-native` crate (MIT, Copyright (c) Wiesław Šoltés; see NOTICE.md and
+# LICENSE-FerroUI), carried here and since adapted. Only this manifest differs from FerroUI's: the
+# workspace values are written out and the FerroUI crates come from the upstream commit the host
+# was verified against, instead of FerroUI's own workspace.
+[package]
+name = "ferroui-osprey-native"
+description = "An Osprey Native host on FerroUI: an Osprey application compiled as a C library runs unchanged, its regions drawn with FerroUI controls and its scenes with FerroUI's drawing context"
+version = "0.5.1-preview.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/wieslawsoltes/FerroUI"
+publish = false
+# Links the Osprey application archive and runtime when `OSPREY_NATIVE_APP_DIR` names them
+# (`build.rs`, README.md); without it the crate builds and tests the host without an application.
+build = "build.rs"
+
+[lib]
+path = "lib.rs"
+
+# The host binary: an application window, or `--smoke` without one. It needs the desktop platform.
+[[bin]]
+name = "ferroui-osprey-native"
+path = "main.rs"
+required-features = ["desktop"]
+test = false
+
+[features]
+default = []
+# The window of the host: the desktop platform of the operating system and the Fluent theme.
+desktop = ["ferroui-view/desktop", "dep:ferroui-desktop", "dep:ferroui-themes-fluent"]
+
+[dependencies]
+ferroui-base = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc" }
+ferroui-controls = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc" }
+ferroui-view = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc" }
+# The window's own start (feature `desktop`): the platform and the Fluent theme `ferroui-view` launches with.
+ferroui-desktop = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc", optional = true }
+ferroui-themes-fluent = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc", optional = true }
+serde_json = "1"
+libc = "0.2"
+
+[dev-dependencies]
+ferroui-controls = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc", features = ["testing"] }
+
+# FerroUI's workspace patches Skia's bindings with a Graphite Metal hotfix; the same patch, from the
+# same commit.
+[patch.crates-io]
+skia-bindings = { git = "https://github.com/wieslawsoltes/FerroUI", rev = "0cdbd6f730ce618f9731b27b39366c80a3f0fafc" }
+
+# FerroUI's fast-release: optimised, without link-time optimisation, unwinding.
+[profile.release]
+lto = false
+panic = "unwind"
+
+[workspace]

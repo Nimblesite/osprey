@@ -28,7 +28,7 @@
 /scripts/packages/test-package-interruption.py
 /src/osprey/examples/daw/
 /src/toolchain/hosts/synth_vst/
-/src/toolchain/hosts/ferroui/
+/src/toolchain/hosts/ferroui/docs
 /scripts/make/daw-profile.sh
 /scripts/make/daw-video.sh
 /scripts/make/daw-playback-rate.mjs

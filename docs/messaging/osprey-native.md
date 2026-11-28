@@ -4,7 +4,7 @@ This brief governs every word about **Osprey Native** (`@osprey/native`): its st
 
 ## The answer
 
-> **Osprey Native builds real native apps without forcing an either/or choice: render real platform controls (SwiftUI, WinUI, Android) or render straight to a GPU canvas (FerroUI / GPUI) — from one AOT-compiled codebase, in your syntax flavor, with signals and enforced accessibility from the ground up.**
+> **Osprey Native builds real native apps without forcing an either/or choice: render real platform controls (SwiftUI, WinUI, Android) or render straight to a GPU canvas (FerroUI) — from one AOT-compiled codebase, in your syntax flavor, with signals and enforced accessibility from the ground up.**
 
 Second sentence, when there is room:
 
@@ -18,7 +18,7 @@ Every longer pitch expands these two sentences and never replaces them. Lead wit
    Application state, logic, and screens compile ahead of time to native machine code (static archives on macOS/iOS/Android, DLLs on Windows) and WebAssembly on the web. Native builds ship no JavaScript engine, no JS bundle, and no JIT warm-up. Every frame crosses a zero-serialization, lease-checked shared-memory bridge (`ViewRow`, `SceneShape`, UTF-8 text run, `AskRow`) generated from one `typeDiagram` schema (`native.td`).
 
 2. **Canvas OR native controls — not either/or.**
-   Choose **real platform controls** (SwiftUI on macOS and iOS, WinUI on Windows, Android's own views on Android) when you want authentic OS look-and-feel, native text fields, scrolling, and system conventions. Choose **GPU canvas rendering** (FerroUI / GPUI — pixel-consistent across platforms, like Flutter) when you want custom scenes, instruments, DAWs, or skinnable interfaces. Mix them where the app demands it: both run on the same state, signals, and shared-memory bridge.
+   Choose **real platform controls** (SwiftUI on macOS and iOS, WinUI on Windows, Android's own views on Android) when you want authentic OS look-and-feel, native text fields, scrolling, and system conventions. Choose **GPU canvas rendering** (FerroUI — pixel-consistent across platforms, like Flutter) when you want custom scenes, instruments, DAWs, or skinnable interfaces. Mix them where the app demands it: both run on the same state, signals, and shared-memory bridge.
 
 3. **Signals from the ground up.**
    Reactivity is built into the language and framework (`Signal<T>`, `Keyed::region`, `signalRefreshKeyed`), not bolted on via hooks, dependency arrays, or manual dirty flags. The compiler derives each view region's read dependencies automatically, refreshing only the regions whose signals changed.
@@ -52,7 +52,7 @@ Position Osprey Native clearly and fairly through concrete architectural trade-o
 
 | Dimension | Osprey Native | Flutter | React Native | Compose Multiplatform (CMP) |
 | --- | --- | --- | --- | --- |
-| **Rendering choice** | **Both:** real native controls (SwiftUI, WinUI, Android) **OR** GPU canvas (FerroUI / GPUI) | Impeller / Skia canvas only (copies of platform widgets) | Native platform views only (custom GPU scenes require native modules) | Primarily Skia canvas (native interop requires wrapping platform views) |
+| **Rendering choice** | **Both:** real native controls (SwiftUI, WinUI, Android) **OR** GPU canvas (FerroUI) | Impeller / Skia canvas only (copies of platform widgets) | Native platform views only (custom GPU scenes require native modules) | Primarily Skia canvas (native interop requires wrapping platform views) |
 | **Runtime & compilation** | AOT native machine code (LLVM) + WebAssembly; no JS engine, no JVM | Dart AOT on mobile/desktop, JS/Wasm on web | JavaScript engine (Hermes) + native bridge / JSI | Kotlin/Native on iOS, JVM on desktop/Android, Wasm/JS on web |
 | **Reactivity** | Compiler-derived signals (`Signal<T>`) & keyed regions from the ground up | Widget tree rebuilds / third-party state packages | React hooks / virtual DOM / third-party signals | Compose Snapshot state + compiler plugin recomposition |
 | **Language choice** | Default Osprey, ML, Python, TypeScript flavors (Dart coming soon; Kotlin considered) | Dart only | JavaScript / TypeScript only | Kotlin only |
@@ -76,8 +76,8 @@ Name only products that run today, and state which hosts run them:
 
 - **Tally** — cross-platform counter running on macOS (SwiftUI), iOS (SwiftUI), Android (native views), and Windows (WinUI).
 - **Issue Inbox** — GitHub issue browser running on iOS and Android simulators/emulators.
-- **Storage, Flock, Painting, Casting** — Windows WinUI apps and macOS FerroUI / GPUI GPU-canvas apps (Flock streams 5,000 sprites at ~7 ms/frame including `update`).
-- **Perception** — digital audio workstation and modular synthesizer rendered through the FerroUI / GPUI host on macOS (patch editor on Windows).
+- **Storage, Flock, Painting, Casting** — Windows WinUI apps and macOS GPU-canvas apps (on the retiring GPUI host today, moving to FerroUI) (Flock streams 5,000 sprites at ~7 ms/frame including `update`).
+- **Perception** — digital audio workstation and modular synthesizer rendered through the FerroUI host on macOS (patch editor on Windows).
 - **Talon Bank** — shared Osprey Native app running on WebAssembly in Chromium alongside mobile hosts.
 - **Osprey Agent** — coding agent built with Osprey Native on macOS (note: not sandboxed).
 - **Proof Workbench** — mathematical proof workbench running on desktop and WebAssembly.
@@ -88,7 +88,7 @@ Keep every limit honest and beside the claim it qualifies:
 
 - **Maturity:** **Osprey Native is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.** Never call it "alpha" or "experimental".
 - **Host coverage:** Common host conformance across all hosts remains active delivery work (plan 0037); some examples (Issue Inbox, Talon Bank) still use app-specific host boundaries.
-- **Accessibility mapping:** The GPUI / FerroUI host maps the UI-machine accessibility tree to AccessKit (NSAccessibility, UI Automation, AT-SPI). WinUI, VS Code, and Apple host AccessKit/accessibility-tree mapping and an external MCP agent server remain delivery work; today the accessibility tree is emitted by UI machine documents, not direct view code.
+- **Accessibility mapping:** The retiring GPUI host maps the UI-machine accessibility tree to AccessKit (NSAccessibility, UI Automation, AT-SPI); FerroUI does not expose scene accessibility to assistive technology yet. WinUI, VS Code, and Apple host AccessKit/accessibility-tree mapping and an external MCP agent server remain delivery work; today the accessibility tree is emitted by UI machine documents, not direct view code.
 - **Syntax flavors:** Default, ML, Python, and TypeScript flavors exist in the Osprey compiler; **Dart flavor** is planned (coming soon) and **Kotlin flavor** is under consideration.
 - **Web target:** Native targets ship no JS engine; the Web target compiles Osprey to WebAssembly and its browser/VS Code webview host uses JavaScript/TypeScript to draw rows into the DOM.
 - **Banned wording:** Never use "zero-cost", "alpha", "experimental", "Logic, in flight", or "does everything".
