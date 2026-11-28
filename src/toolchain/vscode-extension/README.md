@@ -70,7 +70,7 @@ Press `F5`. Breakpoints, stepping, the call stack and variables, on your Osprey 
 - **Tests:** run, cover, profile or debug any case from the Testing view. Skipped tests get flagged, never hidden.
 - **Hunt for bugs:** KLEE searches for inputs that break your program and marks them in the source. [Details](https://www.ospreylang.dev/docs/hunt/).
 - **Osprey Midnight theme:** the editor, the Settings editor and your code in the colours of [ospreylang.dev](https://www.ospreylang.dev/). Pick it under **Preferences: Color Theme**.
-- **Packages:** add and remove packages from the Command Palette. Until the hosted registry launches, they come from an unverified local one. [Walkthrough](https://www.ospreylang.dev/docs/packages-in-vscode/).
+- **Packages:** add and remove packages from the Command Palette. Until the hosted registry launches, they come from an unverified local one. [Walkthrough](https://nimblesite.github.io/osprey-packages/).
 
 ## Requirements
 

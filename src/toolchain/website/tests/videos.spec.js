@@ -13,7 +13,7 @@ const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
 const proofVideos = require("../src/_data/proofVideos.js");
 const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
-const WATCH_PAGES = [WATCH, "/docs/osprey-native/agent/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", "/docs/osprey-native/bridge/", "/docs/typescript/flavor/", ...proofVideos.map(({ id }) => proofWatch(id))];
+const WATCH_PAGES = [WATCH, "/docs/osprey-native/agent/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/osprey-native/bridge/", "/docs/typescript/flavor/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -85,13 +85,6 @@ test("only the watch page carries the video's markup", () => {
   const pages = builtPages();
   const watchPages = pages.filter((file) => read(file).includes('"@type": "VideoObject"'));
   expect(watchPages.sort()).toEqual(WATCH_PAGES.map((watch) => `${watch.slice(1)}index.html`).sort());
-});
-
-test("the package guide links to the canonical package video watch page", () => {
-  const html = read("docs/package-manager/index.html");
-  expect(html).toContain('class="video-card" href="/docs/packages-in-vscode/"');
-  expect(jsonLd(html).some((data) => data["@type"] === "VideoObject")).toBe(false);
-  expect(read("video-sitemap.xml")).toContain(`${ORIGIN}/docs/packages-in-vscode/`);
 });
 
 test("a ?t= link starts the video there and a chapter seeks in place", async ({ page }) => {

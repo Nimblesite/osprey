@@ -25,7 +25,7 @@ Not built: today an example compiles in the documenting file's flavor and its fe
 
 Enforced by `src/toolchain/website/lib/videos.mjs` and `src/toolchain/website/tests/videos.spec.js`; films are made in the Videos repository and copied in with `make media` (`[MEDIA-VIDEOS-REPO]`).
 
-- [ ] Re-make `package-manager` as a tutorial: add `@osprey/json` through the VS Code panel, use `Doc` in code that compiles and runs, then remove the package and show the compile error. Check: `src/toolchain/website/src/_data/videos.json` moves it from `intro` to `tutorial`, it runs 240 to 600 seconds, and `videos.spec.js` lists it.
+- [x] Package and Perception docs moved out ([REPO-SPLIT]): this site keeps one page each, `/docs/package-manager/` and `/docs/perception/`, pointing to [Osprey Packages](https://nimblesite.github.io/osprey-packages/) and [Perception](https://nimblesite.github.io/perception/); the `package-manager` tutorial re-make belongs to osprey-packages. Check: `navigation.spec.js` asserts each is one page linking its website and the old pages return 404.
 - [ ] Website tests for `[DOC-TUTORIAL-VIDEO-CODE]` (code-scene share and path labels) and `[DOC-TUTORIAL-VIDEO-FRESH]` (a film whose quoted code drifted fails): `videos.spec.js` cites both IDs. The Videos repository's factory must first publish each film's code scenes (file, line range, start and end time) beside its chapters.
 - [ ] (verify) Film scripts in the Videos repository cite `[DOC-TUTORIAL-VIDEO-EXPLAIN]`; nothing in this repository can show it.
 

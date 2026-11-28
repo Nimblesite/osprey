@@ -2,7 +2,7 @@
 // page's own headings, independent desktop scrolling and the mobile menu.
 const { test, expect } = require("@playwright/test");
 
-const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Synth", "Packages", "Language", "Reference"];
+const DOC_SECTIONS = ["Start here", "Python", "TypeScript", "Tutorials", "Proofs", "Build applications", "Perception", "Packages", "Language", "Reference"];
 
 test.describe("documentation sub-page navigation", () => {
   test("groups subpages and identifies the current desktop page", async ({ page }) => {
@@ -35,16 +35,27 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page.locator("#site-navigation a.active")).toHaveText("Docs");
   });
 
-  test("the planned Prism hardware page is unpublished: no page, no nav entry, no link", async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/docs/audio-synthesis/");
-    const synth = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Synth" });
-    await expect(synth.getByRole("link", { name: "Audio synthesis", exact: true })).toBeVisible();
-    await expect(synth.getByRole("link", { name: "Prism hardware", exact: true })).toHaveCount(0);
-    await expect(page.locator('a[href="/docs/audio-synthesis/hardware/"]')).toHaveCount(0);
-    const response = await page.request.get("/docs/audio-synthesis/hardware/");
-    expect(response.status()).toBe(404);
-  });
+  // Perception and Osprey Packages live in their own repositories ([REPO-SPLIT]): each keeps one
+  // short page here that points to its own website, with no other page or watch page left behind.
+  for (const [url, section, name, site, gone] of [
+    ["/docs/perception/", "Perception", "Perception", "https://nimblesite.github.io/perception/", ["/docs/audio-synthesis/", "/docs/audio-synthesis/hardware/"]],
+    ["/docs/package-manager/", "Packages", "Osprey Packages", "https://nimblesite.github.io/osprey-packages/", ["/docs/packages-in-vscode/"]],
+  ]) {
+    test(`${name} is one page that points to its own website`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.goto(url);
+      const nav = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: section });
+      await expect(nav.getByRole("link", { name, exact: true })).toHaveAttribute("aria-current", "page");
+      await expect(page.locator("h1")).toContainText(name);
+      await expect(page.locator(`.prose a[href="${site}"]`).first()).toBeVisible();
+      await expect(page.locator(".prose h2")).toHaveCount(0);
+      await expect(page.locator(".prose img, .prose video")).toHaveCount(0);
+      for (const old of gone) {
+        await expect(page.locator(`a[href="${old}"]`)).toHaveCount(0);
+        expect((await page.request.get(old)).status(), old).toBe(404);
+      }
+    });
+  }
 
   for (const height of [600, 900]) {
     test(`the one side panel stays in view and scrolls on its own at ${height}px`, async ({ page }) => {
@@ -97,7 +108,7 @@ test.describe("documentation sub-page navigation", () => {
     await expect(functions).toBeVisible();
     await expect(functions).toHaveAttribute("aria-current", "location");
     await navigation.locator("summary", { hasText: "Packages" }).click();
-    await navigation.getByRole("link", { name: "Package manager", exact: true }).click();
+    await navigation.getByRole("link", { name: "Osprey Packages", exact: true }).click();
     await expect(page).toHaveURL(/\/docs\/package-manager\/$/);
     await context.close();
   });

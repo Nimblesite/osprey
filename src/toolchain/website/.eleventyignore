@@ -5,5 +5,3 @@ node_modules
 _site
 test-results
 playwright-report
-# Planned Prism hardware: kept in the docs, unpublished until announced.
-src/docs/prism-hardware.md

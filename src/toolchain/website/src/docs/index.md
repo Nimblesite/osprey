@@ -37,7 +37,7 @@ Osprey checks proofs with its own kernel and uses [Lean as an oracle](/docs/proo
 
 ## Build applications
 
-- **[Audio synthesis](/docs/audio-synthesis/)** — Prism, a DAW written in Osprey: patch voices, mix through side-chained buses, render to WAV.
+- **[Perception](/docs/perception/)** — a DAW written in Osprey, documented on [its own website](https://nimblesite.github.io/perception/).
 - **[Osprey Native](/docs/osprey-native/)** — the app framework: one store, signals and typed screens, drawn by SwiftUI, VS Code or GPU hosts.
 - **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — Storage, with its logic in Osprey and its screens in SwiftUI.
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — native commands for SQLite, GitHub and reactive controls.
@@ -54,8 +54,7 @@ Osprey checks proofs with its own kernel and uses [Lean as an oracle](/docs/proo
 
 ## Packages
 
-- **[Package manager](/docs/package-manager/)** — publish to a folder registry, resolve and lock dependencies, build from verified source. Hosted publishing is planned.
-- **[Packages in VS Code](/docs/packages-in-vscode/)** — add and remove dependencies, see unverified-release warnings, fetch and build.
+- **[Osprey Packages](/docs/package-manager/)** — locked, verified source packages, documented on [their own website](https://nimblesite.github.io/osprey-packages/).
 - **[Package specification](https://github.com/Nimblesite/osprey-packages/blob/main/docs/specs/ecosystem/0029-PackageManagement.md)** — registry, manifests, resolution, locks, REST API and commands.
 
 ## Language

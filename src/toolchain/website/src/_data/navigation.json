@@ -160,11 +160,11 @@
       ]
     },
     {
-      "title": "Synth",
+      "title": "Perception",
       "items": [
         {
-          "text": "Audio synthesis",
-          "url": "/docs/audio-synthesis/"
+          "text": "Perception",
+          "url": "/docs/perception/"
         }
       ]
     },
@@ -172,12 +172,8 @@
       "title": "Packages",
       "items": [
         {
-          "text": "Package manager",
+          "text": "Osprey Packages",
           "url": "/docs/package-manager/"
-        },
-        {
-          "text": "Packages in VS Code",
-          "url": "/docs/packages-in-vscode/"
         },
         {
           "text": "@osprey/json API",
@@ -286,7 +282,7 @@
           "url": "/docs/python/flavor/"
         },
         {
-          "text": "Package Manager",
+          "text": "Osprey Packages",
           "url": "/docs/package-manager/"
         },
         {

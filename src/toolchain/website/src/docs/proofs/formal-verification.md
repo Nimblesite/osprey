@@ -101,7 +101,7 @@ Researchers have shown before that memory handling can be proved: John Reynolds 
 
 ## Audio synthesis: proved today
 
-Audio is where Osprey's proofs have gone furthest. [Prism](/docs/audio-synthesis/), the music studio app written in Osprey, makes its sound with the [synth package](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/synth/src). A computer stores sound as a long list of numbers called **samples**, tens of thousands per second. Every effect in Prism is code that turns one list of samples into another, and the proofs show that this code does what the audio textbooks say.
+Audio is where Osprey's proofs have gone furthest. [Prism](/docs/perception/), the music studio app written in Osprey, makes its sound with the [synth package](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/synth/src). A computer stores sound as a long list of numbers called **samples**, tens of thousands per second. Every effect in Prism is code that turns one list of samples into another, and the proofs show that this code does what the audio textbooks say.
 
 ### A worked example: the pan dial
 

@@ -90,4 +90,4 @@ The audio engine has limits too. Prism renders offline and then plays the result
 
 ## Try it
 
-Read the [audio synthesis guide](/docs/audio-synthesis/), or browse the [synth package source](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/synth). Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
+Read the [Perception website](https://nimblesite.github.io/perception/), or browse the [synth package source](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/synth). Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
