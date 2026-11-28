@@ -166,7 +166,7 @@ define discipline_roundtrip
 	sed 's|"../$(1)"|"../../../src/osprey/examples/disciplines/$(1)"|' src/osprey/examples/disciplines/$(2)/osprey.toml > target/disciplines/$(2)/osprey.toml
 	$(if $(4),$(4),@true)
 	@./$(BIN) target/disciplines/$(2) --check > target/disciplines/$(1)-rejected.txt 2>&1; test $$? -ne 0
-	$(CHECKOUT_RELATIVE) target/disciplines/$(1)-rejected.txt | diff --strip-trailing-cr - src/osprey/examples/disciplines/$(2)/rejected.expectedoutput
+	$(CHECKOUT_RELATIVE) target/disciplines/$(1)-rejected.txt | diff $(if $(CHECKOUT_NATIVE),--strip-trailing-cr) - src/osprey/examples/disciplines/$(2)/rejected.expectedoutput
 	@$(RM) src/osprey/examples/disciplines/$(1)/.osprey src/osprey/examples/disciplines/$(2)/.osprey
 endef
 

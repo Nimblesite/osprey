@@ -246,9 +246,10 @@ def windows_compiler_failures():
     failures = []
     ci = pathlib.Path(".github/workflows/ci-windows.yml")
     text = ci.read_text()
-    setup = text.find(WINDOWS_TOOLCHAIN_STEP)
     build = re.search(r"^      - name: Both canaries$", text, re.MULTILINE)
-    if setup == -1 or build is None or setup >= build.start():
+    setup = -1 if build is None else text.rfind(WINDOWS_TOOLCHAIN_STEP, 0, build.start())
+    # The setup must be in the canaries' own job: no job header between them.
+    if setup == -1 or re.search(r"^  [\w-]+:$", text[setup:build.start()], re.MULTILINE):
         failures.append(f"{ci}: pin MinGW clang before the Windows canaries compile")
     return failures + pin_failures(WINDOWS_TOOLCHAIN, WINDOWS_TOOLCHAIN.read_text(), "    ")
 
