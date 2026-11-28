@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Lays the split repositories' main branches over this checkout, each file at the path it had before
-# the split [REPO-SPLIT-CANARY]. Those paths are gitignored here, so the laid files never show as
-# changes. Only CI tests read them: the canaries, the compiler-side tests that build their programs
-# and the checks that the package manager still builds on each platform.
+# Brings the split repositories' main branches into target/downstream/<name> [REPO-SPLIT-CANARY].
+# osprey-packages builds there with its own Makefile (BIN=<this compiler>), so it only gets its
+# released toolchain's packages. A repository with a `paths` file (perception) is also laid over this
+# checkout, each file at the path it had before the split; those paths are gitignored here. Only CI
+# tests read them: the canaries, the compiler-side tests that build their programs and the checks
+# that the package manager still builds on each platform.
 # Usage: scripts/ci/downstream.sh [name...]; no name lays every repository. A repository already
 # checked out under target/downstream/<name> (CI checks out its main) is used as it is; otherwise
 # main is cloned, or fetched and reset when the clone exists.
@@ -16,6 +18,11 @@ for name in "$@"; do
     elif [ -z "${CI:-}" ]; then
         git -C "$dir" fetch --quiet --depth 1 origin main
         git -C "$dir" reset --quiet --hard FETCH_HEAD
+    fi
+    if [ ! -f "$dir/paths" ]; then
+        make -C "$dir" toolchain
+        echo "downstream: $name at main $(git -C "$dir" rev-parse --short HEAD) in $dir"
+        continue
     fi
     paths=()
     # A Windows checkout gives `paths` CRLF line ends: read them as LF.

@@ -59,48 +59,34 @@ _vsix_clean:
 # The package manager is Nimblesite/osprey-packages' to build and ship [REPO-SPLIT]: the VSIX
 # bundles no client, registry server or package workspace, and the extension reads them from
 # osprey.packages.frontendPath, osprey.packages.appPath and osprey.packages.localRegistry.serverPath.
-# The targets below build them from `make downstream`'s laid main for the extension's CI tests only,
-# which `_vsix_bundle_packages` stages beside the bundled compiler.
-REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \) 2>/dev/null)
+# The targets below build them with osprey-packages' own Makefile in `make downstream`'s checkout
+# (target/downstream/osprey-packages), with this compiler, for the extension's CI tests only, which
+# `_vsix_bundle_packages` stages beside the bundled compiler.
+PACKAGES_CHECKOUT := target/downstream/osprey-packages
 .PHONY: _downstream_packages
-_downstream_packages:
-	@test -f src/osprey/packages/manager/cli/osprey.toml || { echo "The package manager is not laid down: run make downstream" >&2; exit 1; }
-# `--no-warnings` skips the warning pass: the redundant-annotation oracle
-# re-infers the whole program once per proof, which on the client is the
-# difference between 40 s and 31 min (one 7 s solve per annotation site).
-# `--quiet` alone silences progress only; warnings are diagnostics and would
-# still be computed. Package warnings are `osprey --check`'s and the editor's
-# to show; a packaging build only ships.
-target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
-	$(BIN) build src/osprey/packages/manager/cli --quiet --no-warnings -o $@
+_downstream_packages: $(BIN) | _runtime_wasm
+	@test -f $(PACKAGES_CHECKOUT)/Makefile || { echo "The package manager is not checked out: run make downstream" >&2; exit 1; }
+	$(MAKE) -C $(PACKAGES_CHECKOUT) build BIN=$(abspath $(BIN))
+target/osprey-pkg target/osprey-registry target/package-workspace.wasm: _downstream_packages
+	cp $(PACKAGES_CHECKOUT)/$@ $@
 
 NATIVE_HOST_ENTRY := src/osprey/packages/native/host/entry.ospml
-
-PACKAGE_WORKSPACE_SOURCES := $(NATIVE_HOST_ENTRY) $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \) 2>/dev/null)
-target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm _downstream_packages
-	$(BIN) build src/osprey/packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
 WORKBENCH_SOURCES := $(NATIVE_HOST_ENTRY) src/osprey/workbench/osprey.toml $(shell find src/osprey/workbench/src src/osprey/examples/proof/kernel/src src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f -name '*.ospml')
 target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
 	$(BIN) build src/osprey/workbench --target=wasm32 --quiet --no-warnings -o $@
 
-# The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
-# registry server, which the extension's CI tests stage, and the repository's own
-# packages published into a folder registry with `publish --folder`, which
-# osprey-packages' `registry-serve` serves. The VSIX carries no
-# packages: building it never publishes them. The stamp sits outside the tree,
-# where a stray file would be refused by the catalog walk.
-target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES) | _downstream_packages
-	$(BIN) build src/osprey/packages/manager/api --quiet --no-warnings -o $@
-
-#
+# The local package registry ([PACKAGE-LOCAL-REGISTRY]): this repository's own packages published
+# into a folder registry with osprey-packages' client and `publish --folder`, for the extension's CI
+# tests. The VSIX carries no packages: building it never publishes them. The stamp sits outside the
+# tree, where a stray file would be refused by the catalog walk.
 # Second expansion lists the sources only when the stamp is built: every other
 # target, such as the MSYS shell's `_runtime` where git is not on the PATH, runs
 # no git.
 .SECONDEXPANSION:
-LOCAL_REGISTRY_SOURCES = $(shell git ls-files src/osprey/packages | grep -v '^src/osprey/packages/manager/')
-target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
-	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
+LOCAL_REGISTRY_SOURCES = $(shell git ls-files src/osprey/packages)
+target/local-registry.stamp: target/osprey-pkg $$(LOCAL_REGISTRY_SOURCES)
+	$(PACKAGES_CHECKOUT)/scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry src/osprey/packages
 	@touch $@
 
 _vsix_bundle: target/workbench.wasm
