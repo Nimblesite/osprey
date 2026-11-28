@@ -12,7 +12,8 @@
 # The split repositories' main branches (target/downstream) and Perception's files laid over this
 # checkout by scripts/ci/downstream.sh for CI tests only [REPO-SPLIT-CANARY]. Never tracked here.
 /target/downstream/
-/src/osprey/examples/daw/
+/src/studio/
+/src/synth/
 /src/toolchain/hosts/synth_vst/
 /src/toolchain/hosts/ferroui/
 /scripts/make/daw-profile.sh

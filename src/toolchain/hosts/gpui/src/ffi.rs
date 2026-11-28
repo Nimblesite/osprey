@@ -268,7 +268,7 @@ mod windows_dll_tests {
 
     /// The Windows host runs the same self-contained `app.dll` every Windows host loads
     /// ([WINUI-HOST-DLL]): `OSPREY_NATIVE_APP_DLL` names Prism's, built with
-    /// `osprey build src/osprey/examples/daw --target=windows-x64`. Loading binds its one import,
+    /// `osprey build src/studio --target=windows-x64`. Loading binds its one import,
     /// `native_slice`, so `osprey_main` runs (it answers -2 while a slot is empty) and the first
     /// frame crosses the shared bridge with Prism's controls, its scene and no refusal.
     #[test]

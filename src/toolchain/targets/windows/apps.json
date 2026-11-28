@@ -39,7 +39,7 @@
       ]
     },
     "synth": {
-      "source": "src/osprey/examples/daw",
+      "source": "src/studio",
       "name": "Prism Synth",
       "description": "Edit patches and play songs on the Prism timeline.",
       "capabilities": [],
