@@ -277,32 +277,11 @@ jobs:
           sha256() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$@"; else sha256sum "$@"; fi; }
           ( cd dist && sha256 "$staging.tar.gz" | tee "$staging.tar.gz.sha256" )
 
-      # [SYMEX-INSTALL] Hunt from the unpacked tarball, never the build tree:
-      # each backend must find, replay and reproduce the planted abort, linking
-      # the runtime that shipped beside the binary (#443).
+      # [SYMEX-INSTALL] Hunt from the unpacked tarball, never the build tree (#443).
       - name: Smoke-test Hunt from the tarball (Linux/macOS)
         if: runner.os != 'Windows'
         shell: bash
-        run: |
-          set -euo pipefail
-          staging="osprey-${{ needs.version.outputs.version }}-${{ matrix.platform }}"
-          unpacked="$RUNNER_TEMP/hunt-smoke"
-          rm -rf "$unpacked" && mkdir -p "$unpacked"
-          tar -xzf "dist/$staging.tar.gz" -C "$unpacked"
-          cp src/osprey/tests/hunt/crash.osp "$unpacked/"
-          cd "$unpacked"
-          for memory in gc arc; do
-            status=0
-            "./$staging/osprey" hunt crash.osp --memory="$memory" --max-time 120 --out "out-$memory" || status=$?
-            [ "$status" = 1 ] || { echo "::error::hunt --memory=$memory exited $status, not 1 (a finding)"; exit 1; }
-            node -e '
-              const [file, runtime] = process.argv.slice(1);
-              const report = JSON.parse(require("fs").readFileSync(file, "utf8"));
-              const found = report.findings.some((f) => f.class === "abort" && f.line === 4 && f.replay === "reproduced");
-              const linked = report.context.engineArguments.some((arg) => arg.startsWith("-link-llvm-lib=") && arg.endsWith(runtime));
-              if (!found || !linked) { console.error(JSON.stringify(report, null, 2)); process.exit(1); }
-            ' "out-$memory/report.json" "/$staging/libosprey_runtime_klee_$memory.bc"
-          done
+        run: scripts/ci/hunt-tarball-smoke.sh "dist/osprey-${{ needs.version.outputs.version }}-${{ matrix.platform }}.tar.gz"
 
       - uses: actions/upload-artifact@v7
         with:
