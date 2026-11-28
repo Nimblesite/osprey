@@ -223,7 +223,7 @@ fn assert_project_main_symbol_is_local(json: &str, source: &Path) {
     let path = main
         .and_then(|entry| entry.get("path"))
         .and_then(serde_json::Value::as_str);
-    let canonical = std::fs::canonicalize(source).ok();
+    let canonical = osprey_project::paths::canonical(source).ok();
     assert_eq!(path, canonical.as_deref().and_then(Path::to_str));
 }
 

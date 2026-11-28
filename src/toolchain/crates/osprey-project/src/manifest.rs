@@ -78,7 +78,7 @@ impl ProjectConfig {
     /// with the default levels ([LINT-LEVELS]).
     #[must_use]
     pub fn lint_levels(path: &Path) -> osprey_types::LintLevels {
-        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        let path = crate::paths::canonical_or_given(path);
         path.ancestors()
             .map(|directory| directory.join("osprey.toml"))
             .find(|manifest| manifest.is_file())

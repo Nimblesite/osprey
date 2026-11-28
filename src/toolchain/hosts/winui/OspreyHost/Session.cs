@@ -24,6 +24,7 @@ sealed class Session
     readonly Border told = new();
     readonly Capabilities capabilities;
     readonly DispatcherQueue queue;
+    readonly Lifetime lifetime = new();
     readonly Action<IReadOnlyList<string>> report;
     const double FirstFrame = 1.0 / 60;
     const double MaxFrame = 0.1;
@@ -137,6 +138,16 @@ sealed class Session
     // The scene the frame on show gave its canvas, from whichever view is drawing.
     SceneView? OnShow() => told.Visibility == Visibility.Visible ? renderer.FirstScene() : rows.FirstScene();
 
+    /// <summary>
+    /// Ends the application before the host exits or its window closes: the frame clock stops and
+    /// every later event, such as a capability's answer still in flight, is dropped.
+    /// </summary>
+    public void End()
+    {
+        Animate(false);
+        lifetime.End();
+    }
+
     /// <summary>Sends one typed event; one raised while a frame is being applied waits its turn.</summary>
     public void Send(Touch touch)
     {
@@ -145,7 +156,10 @@ sealed class Session
             queue.TryEnqueue(() => Send(touch));
             return;
         }
-        Guarded(() => Apply(library.Event(Now(), touch)));
+        if (!lifetime.Deliver(() => Guarded(() => Apply(library.Event(Now(), touch)))))
+        {
+            Progress.Note($"dropped event {touch.Kind}: the application ended");
+        }
     }
 
     /// <summary>A control's value under the ordinal the frame issued, as the words an event carries.</summary>

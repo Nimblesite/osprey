@@ -42,7 +42,7 @@ fn is_workspace(root: &Path, dependency: &Dependency) -> bool {
 fn sibling(root: &Path, key: &str) -> Option<(String, ProjectConfig)> {
     let directory = key.rsplit('/').next()?;
     let package = root.join("..").join(directory);
-    if package.canonicalize().ok()? == root.canonicalize().ok()? {
+    if crate::paths::canonical(&package).ok()? == crate::paths::canonical(root).ok()? {
         return None;
     }
     let manifest = package.join("osprey.toml");

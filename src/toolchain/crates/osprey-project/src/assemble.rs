@@ -152,11 +152,13 @@ fn choose_entry(
     // ill-formed whether or not it is the one selected.
     report_entry_conflicts(sources, metadata, errors);
     if let Some(configured) = &config.entry {
-        let resolved = config.directory.join(configured).canonicalize().ok();
+        let resolved = crate::paths::canonical(config.directory.join(configured)).ok();
         let candidates = metadata
             .iter()
             .filter(|source| match &resolved {
-                Some(entry) => source.path.canonicalize().is_ok_and(|path| path == *entry),
+                Some(entry) => {
+                    crate::paths::canonical(&source.path).is_ok_and(|path| path == *entry)
+                }
                 None => source.path == *configured || source.path.ends_with(configured),
             })
             .map(|source| source.index)

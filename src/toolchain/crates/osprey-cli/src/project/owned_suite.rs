@@ -39,5 +39,5 @@ impl CompilationInput {
 
 /// One spelling per file, so `tests/./a.test.osp` and `tests/a.test.osp` match.
 fn canonical(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    osprey_project::paths::canonical_or_given(path)
 }

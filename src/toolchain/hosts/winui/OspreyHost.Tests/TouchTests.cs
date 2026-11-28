@@ -87,4 +87,24 @@ public sealed class TouchTests
         Assert.Equal(Ask.Diagnostic, refused.Code);
         Assert.Equal("an event no control names", refused.Ticket);
     }
+
+    // [WINUI-HOST-THREAD] An HTTP answer that lands after the self-test's Exit, or after a person closed the
+    // window, must not reach the application: WinUI is tearing its controls down, and touching them crashed
+    // the host with 0xC000027B in CoreMessagingXP.
+    [Fact]
+    public void AnEventArrivingAfterTheApplicationEndedIsDropped()
+    {
+        var lifetime = new Lifetime();
+        var delivered = new List<string>();
+        Assert.False(lifetime.Ended);
+        Assert.True(lifetime.Deliver(() => delivered.Add("while running")));
+        Assert.True(lifetime.Deliver(() => delivered.Add("still running")));
+        lifetime.End();
+        Assert.True(lifetime.Ended);
+        Assert.False(lifetime.Deliver(() => delivered.Add("late answer")));
+        lifetime.End();
+        Assert.True(lifetime.Ended);
+        Assert.False(lifetime.Deliver(() => delivered.Add("later frame")));
+        Assert.Equal(["while running", "still running"], delivered);
+    }
 }

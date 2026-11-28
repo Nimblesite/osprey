@@ -121,19 +121,17 @@ impl Request {
         Self {
             version: VERSION,
             module: Module {
-                path: source.path.to_string_lossy().into_owned(),
+                path: crate::paths::plain_text(&source.path),
                 flavor: source.flavor.to_string(),
                 source: source.source.clone(),
             },
             imports,
             options: Options {
-                project_root: config.directory.to_string_lossy().into_owned(),
-                cache_dir: config
-                    .directory
-                    .join(".osprey/cache/disciplines")
-                    .to_string_lossy()
-                    .into_owned(),
-                compiler: crate::compiler_binary().to_string_lossy().into_owned(),
+                project_root: crate::paths::plain_text(&config.directory),
+                cache_dir: crate::paths::plain_text(&crate::paths::discipline_cache(
+                    &config.directory,
+                )),
+                compiler: crate::paths::plain_text(&crate::compiler_binary()),
             },
         }
     }

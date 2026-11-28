@@ -270,18 +270,28 @@ test('test-only function-pointer tuple fields keep later product types visible',
   assert.equal(result.status, 0, result.stderr)
 })
 
-// A cancelled or failed Windows core job must not throw its cold cargo build away. The combined
+// A cancelled or failed Windows job must not throw its cold cargo build away. The combined
 // `actions/cache` saves only after the whole job succeeds, so a job cancelled at its timeout (PR #438:
-// a 428 s cold build, then the corpora) left the next run just as cold. Saved straight after the
-// build, as winui.yml does, a timed-out corpus still leaves a warm cache behind it.
-test('the Windows core job saves its cargo cache straight after the build, before the corpora', () => {
-  const core = job('windows-core', '.github/workflows/ci-windows.yml')
-  assert.doesNotMatch(core, /uses: actions\/cache@/)
-  const at = (pattern) => core.search(pattern)
+// a 428 s cold build, then the corpora) left the next run just as cold. The build job saves straight
+// after the build, as winui.yml does, and the corpora and disciplines run in their own jobs on its
+// artifact, so neither a slow corpus nor a slow build can push the other past its timeout.
+test('the Windows build job saves its cargo cache straight after the build, and the corpora run on its artifact', () => {
+  const build = job('windows-build', '.github/workflows/ci-windows.yml')
+  assert.doesNotMatch(build, /uses: actions\/cache@/)
+  const at = (pattern) => build.search(pattern)
   const restore = at(/uses: actions\/cache\/restore@/)
-  const build = at(/cargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli/)
+  const compile = at(/cargo build --manifest-path src\/toolchain\/Cargo\.toml --release -p osprey-cli/)
   const save = at(/uses: actions\/cache\/save@/)
-  const corpus = at(/name: Core language assertion corpus/)
-  assert.ok(restore >= 0 && build > restore && save > build && corpus > save, `restore ${restore}, build ${build}, save ${save}, corpus ${corpus}`)
-  assert.match(core, /if: steps\.cargo-cache\.outputs\.cache-hit != 'true'/)
+  const upload = at(/uses: actions\/upload-artifact@/)
+  assert.ok(restore >= 0 && compile > restore && save > compile && upload > save, `restore ${restore}, build ${compile}, save ${save}, upload ${upload}`)
+  assert.match(build, /if: steps\.cargo-cache\.outputs\.cache-hit != 'true'/)
+  assert.doesNotMatch(build, /name: Core language assertion corpus/)
+  for (const name of ['windows-core', 'windows-disciplines']) {
+    const tests = job(name, '.github/workflows/ci-windows.yml')
+    assert.match(tests, /needs: \[changes, windows-build\]/, name)
+    assert.match(tests, /uses: actions\/download-artifact@/, name)
+    assert.doesNotMatch(tests, /cargo build/, name)
+  }
+  assert.match(job('windows-core', '.github/workflows/ci-windows.yml'), /name: Core language assertion corpus/)
+  assert.match(job('windows-disciplines', '.github/workflows/ci-windows.yml'), /make _test_disciplines DISCIPLINE_WASM=0/)
 })

@@ -413,7 +413,7 @@ fn project_root(path: &Path) -> PathBuf {
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
-    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+    osprey_project::paths::canonical_or_given(path)
 }
 
 /// The absolute form of a source path with its symlinks kept as written: debug

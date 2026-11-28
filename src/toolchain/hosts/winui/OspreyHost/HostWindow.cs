@@ -36,12 +36,16 @@ sealed partial class HostWindow : Window
         Content = Layout(root);
         Progress.Note("content set");
         session = Started(launch, root, steady);
+        Closed += (_, _) => End();
         if ((session?.CanvasSize() ?? session?.NaturalSize(root)) is { } canvas)
         {
             Fit(canvas.Width, canvas.Height);
         }
         Progress.Note(session is null ? "application not started" : "application started");
     }
+
+    /// <summary>Ends the application before the host exits; answers still in flight are dropped.</summary>
+    public void End() => session?.End();
 
     /// <summary>Every diagnostic shown since the window opened.</summary>
     public IReadOnlyList<string> Problems => reported;

@@ -28,7 +28,7 @@ pub(crate) fn load(cli: &Cli) -> Result<SourceSet, String> {
     if project::is_project_path(&cli.path) {
         return load_project(cli);
     }
-    let path = std::fs::canonicalize(&cli.path).map_err(|error| error.to_string())?;
+    let path = osprey_project::paths::canonical(&cli.path).map_err(|error| error.to_string())?;
     let source = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
     let flavor = osprey_syntax::resolve_flavor(cli.flavor, &cli.path, &source)?;
     let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);

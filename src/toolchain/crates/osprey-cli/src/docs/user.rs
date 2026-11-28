@@ -40,7 +40,7 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
 }
 
 fn source_root(path: &str) -> io::Result<std::path::PathBuf> {
-    let selected = std::fs::canonicalize(path)?;
+    let selected = osprey_project::paths::canonical(path)?;
     if selected.is_dir() {
         return Ok(selected);
     }
@@ -78,7 +78,7 @@ fn file_name(source: &osprey_project::SourceFile, root: &Path) -> io::Result<Str
 /// A source file as the reader would name it in their own checkout: relative to
 /// the documented root, or bare where it sits outside one.
 fn relative_path(source: &osprey_project::SourceFile, root: &Path) -> io::Result<String> {
-    let canonical = std::fs::canonicalize(&source.path)?;
+    let canonical = osprey_project::paths::canonical(&source.path)?;
     let relative = canonical
         .strip_prefix(root)
         .ok()
@@ -115,14 +115,16 @@ fn origin(source: &osprey_project::SourceFile, opaque: bool, root: &Path) -> io:
 }
 
 fn local_symbols(symbols: &[Value], source: &Path) -> io::Result<Vec<Value>> {
-    let canonical = std::fs::canonicalize(source)?;
+    let canonical = osprey_project::paths::canonical(source)?;
     Ok(symbols
         .iter()
         .filter(|symbol| {
             symbol
                 .get("path")
                 .and_then(Value::as_str)
-                .is_none_or(|path| std::fs::canonicalize(path).is_ok_and(|path| path == canonical))
+                .is_none_or(|path| {
+                    osprey_project::paths::canonical(path).is_ok_and(|path| path == canonical)
+                })
         })
         .cloned()
         .collect())

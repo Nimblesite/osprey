@@ -53,13 +53,43 @@ fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name(
     std::fs::write(&compiler, b"compiler one").expect("compiler");
     let build_dir = root.join("build");
     let compiler_digest = inputs::compiler_digest(&compiler).expect("compiler digest");
-    let built = build_dir.join(format!("bounded-{digest:016x}-{compiler_digest:016x}"));
+    let built = build_dir.join(format!(
+        "bounded-{digest:016x}-{compiler_digest:016x}{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     std::fs::create_dir_all(&build_dir).expect("build dir");
     std::fs::write(&built, b"built").expect("prebuilt binary");
+    let exe = std::env::consts::EXE_SUFFIX;
+    let stale = [
+        format!("bounded-{:016x}-{compiler_digest:016x}{exe}", digest ^ 1),
+        format!("bounded-{digest:016x}-{:016x}{exe}", compiler_digest ^ 1),
+    ];
+    let kept = [
+        format!("boundedx-{digest:016x}-{compiler_digest:016x}{exe}"),
+        format!("lean-{digest:016x}-{compiler_digest:016x}{exe}"),
+        format!("bounded-{digest:016x}-{compiler_digest:016x}{exe}.4.0.tmp"),
+        "bounded-notes.txt".to_owned(),
+    ];
+    for name in stale.iter().chain(&kept) {
+        std::fs::write(build_dir.join(name), b"other").expect("sibling");
+    }
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    let found = ProcessRunner::new(compiler, build_dir).executable(&discipline, deadline);
+    let found = ProcessRunner::new(compiler, build_dir.clone()).executable(&discipline, deadline);
     let why = "a built binary is found again under the name its inputs hash to";
     assert_eq!(found.expect("reused binary"), built, "{why}");
+    assert!(built.is_file(), "the current build is kept");
+    for name in &stale {
+        assert!(
+            !build_dir.join(name).exists(),
+            "an earlier build of the discipline is removed: {name}"
+        );
+    }
+    for name in &kept {
+        assert!(
+            build_dir.join(name).is_file(),
+            "another discipline's build, an in-flight build or a stranger is kept: {name}"
+        );
+    }
     let after = digest_after_rewrite(&discipline, "src/Range.ospml", RANGE_ONE);
     let why = "a change to an imported module is a change to an input";
     assert_ne!(after, digest, "{why}");

@@ -225,19 +225,33 @@ def decision_failures(script, summary):
     return failures
 
 
+WINDOWS_TOOLCHAIN = pathlib.Path(".github/actions/setup-windows-msys2/action.yml")
+WINDOWS_TOOLCHAIN_STEP = "      - uses: ./.github/actions/setup-windows-msys2"
+
+
+def pin_failures(where, text, indent):
+    """The MinGW clang pin step in `text`, and that it exports OSPREY_CC."""
+    pin = re.search(rf"^{indent}- name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
+    if pin is None:
+        return [f"{where}: pin the MinGW clang"]
+    block = text[pin.end():].split(f"{indent}- name:", 1)[0]
+    if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
+        return [f"{where}: export the pinned compiler as OSPREY_CC"]
+    return []
+
+
 def windows_compiler_failures():
+    """Windows CI pins the MinGW clang in the shared toolchain action, which the
+    canaries' job sets up before they compile."""
     failures = []
-    for workflow in (pathlib.Path(".github/workflows/ci-windows.yml"),):
-        text = workflow.read_text()
-        pin = re.search(r"^      - name: Pin the MinGW clang[^\n]*", text, re.MULTILINE)
-        build = re.search(r"^      - name: Both canaries$", text, re.MULTILINE)
-        if pin is None or build is None or pin.start() >= build.start():
-            failures.append(f"{workflow}: pin MinGW clang before the Windows canaries compile")
-            continue
-        block = text[pin.end():].split("      - name:", 1)[0]
-        if 'echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"' not in block:
-            failures.append(f"{workflow}: export the pinned compiler as OSPREY_CC")
-    return failures
+    ci = pathlib.Path(".github/workflows/ci-windows.yml")
+    text = ci.read_text()
+    build = re.search(r"^      - name: Both canaries$", text, re.MULTILINE)
+    setup = -1 if build is None else text.rfind(WINDOWS_TOOLCHAIN_STEP, 0, build.start())
+    # The setup must be in the canaries' own job: no job header between them.
+    if setup == -1 or re.search(r"^  [\w-]+:$", text[setup:build.start()], re.MULTILINE):
+        failures.append(f"{ci}: pin MinGW clang before the Windows canaries compile")
+    return failures + pin_failures(WINDOWS_TOOLCHAIN, WINDOWS_TOOLCHAIN.read_text(), "    ")
 
 
 def main():

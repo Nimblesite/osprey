@@ -224,7 +224,7 @@ fn parent_python_entry_fixture() -> std::io::Result<(PathBuf, PathBuf)> {
 fn python_entry_is_resolved_relative_to_a_derived_manifest() -> std::io::Result<()> {
     let (root, project) = parent_python_entry_fixture()?;
     let loaded = osprey_project::load_and_assemble(&project);
-    let expected = root.join("src/main.py").canonicalize()?;
+    let expected = osprey_project::paths::canonical(root.join("src/main.py"))?;
     std::fs::remove_dir_all(root)?;
     assert!(loaded.is_ok(), "{loaded:#?}");
     assert_eq!(

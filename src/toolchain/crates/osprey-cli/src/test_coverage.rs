@@ -79,7 +79,7 @@ fn merge_hits(merged: &mut LineHits, hits: LineHits) {
 /// typed instead orders a mix of absolute and relative `source_roots` another
 /// way, so every hit landed on the wrong file and line (#381).
 fn attribute_lines(suite: &Path, hits: LineHits) -> BTreeMap<String, LineHits> {
-    let compiled = std::fs::canonicalize(suite).unwrap_or_else(|_| suite.to_path_buf());
+    let compiled = osprey_project::paths::canonical_or_given(suite);
     let project = compiled
         .is_dir()
         .then(|| osprey_project::load_and_assemble(&compiled).ok())

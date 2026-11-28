@@ -19,3 +19,12 @@ module Checks
             expect (toString (Rate::half 200), "100"))
         test ("the boundary values of the bound are accepted", \() =>
             expect (toString (Rate::scale (0, 200)) + "/" + toString (Rate::scale (100, 200)), "0/200"))
+        test ("a POSIX host's spawn line single-quotes every word and keeps the line as written", \() =>
+            expect (spawned (false, "/repo/osprey", "/repo/.osprey/cache/it's.ospml", "/repo/out"), "'/repo/osprey' '/repo/.osprey/cache/it'\\''s.ospml' --signature > '/repo/out'"))
+        // cmd.exe, which Windows spawns through, knows no single quotes.
+        test ("a Windows host's spawn line double-quotes every word and the whole line for cmd.exe", \() =>
+            expect (spawned (true, "C:\\o\\osprey.exe", "C:\\r\\cache/erased-rate.ospml", "C:\\r\\out"), "\"\"C:\\o\\osprey.exe\" \"C:\\r\\cache/erased-rate.ospml\" --signature > \"C:\\r\\out\"\""))
+        test ("a Windows tool's CRLF line ends read as LF", \() =>
+            expect (Shell::lf "signature Rate\r\n    scale : (int, int) -> int\r\n", "signature Rate\n    scale : (int, int) -> int\n"))
+
+    spawned (windows, compiler, path, out) = Shell::line (windows, Shell::word (windows, compiler) + " " + Shell::word (windows, path) + " --signature > " + Shell::word (windows, out))

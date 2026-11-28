@@ -49,7 +49,7 @@ fn selected_executable(
         return native_executable(input, options);
     };
     build_input(input, output, options)?;
-    let path = std::fs::canonicalize(output).map_err(|error| {
+    let path = osprey_project::paths::canonical(output).map_err(|error| {
         eprintln!(
             "error: cannot resolve executable {}: {error}",
             output.display()

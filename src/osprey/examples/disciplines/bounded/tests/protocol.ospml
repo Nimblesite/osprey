@@ -32,16 +32,13 @@ module Protocol
 
     signatureText = "signature Rate\n    scale : (int, int) -> int\n    relay : (int) -> int\n    literals : () -> int\n    add : (int, int) -> int\n    inc : (int) -> int\n    ok : () -> int\n"
 
-    cases (where) =
-        prepared = runShell ("mkdir -p " + quote where.scratch)
-        match prepared == 0
-            true => asked (where)
-            false => check ("the suite can make its scratch directory", "prepared", "mkdir failed")
+    cases (where) = match makeDir where.scratch
+        Success _ => asked (where)
+        Error message => check ("the suite can make its scratch directory", "prepared", message)
 
     asked (where) =
         acceptedCases (where)
         rejectedCases (where)
-        finish (where)
 
     acceptedCases (where) =
         test ("accepts literal, sum and product arguments inside the bound and erases the annotations", \() =>
@@ -65,15 +62,18 @@ module Protocol
         test ("a compiler that refuses the erased module is a check rejection", \() =>
             expect (ask (where, plainSource (), failingStub where), rejected [Expected(code = "check", line = 0, column = 0, message = "the erased module did not pass the compiler: fixture: the erased module does not infer")]))
 
-    finish (where) =
-        cleaned = runShell ("rm -rf " + quote where.scratch + " /tmp/osprey-bounded-protocol.txt")
-        cleanupProcess cleaned
+    stub (where) = double (where, "signature")
 
-    stub (where) = where.package + "/tests/signature-stub.sh"
+    silentStub (where) = double (where, "silent")
 
-    silentStub (where) = where.package + "/tests/silent-stub.sh"
+    failingStub (where) = double (where, "failing")
 
-    failingStub (where) = where.package + "/tests/failing-stub.sh"
+    // Each compiler double has a POSIX script and a Windows batch twin that answer alike.
+    double (where, name) = where.package + "/tests/" + name + "-stub" + script (windows ())
+
+    script (onWindows) = match onWindows
+        true => ".cmd"
+        false => ".sh"
 
     range (line, column, param, callee, actual, declared) =
         Expected(code = "out-of-range", line = line, column = column, message = "argument `" + param + "` to `" + callee + "` is in " + actual + ", outside " + declared)
@@ -89,7 +89,7 @@ module Protocol
         Success _ => ran where
 
     ran (where) =
-        command = quote where.checker + " < " + quote (where.scratch + "/request.json") + " > " + quote (where.scratch + "/response.json") + " 2> " + quote (where.scratch + "/stderr.txt")
+        command = Shell::line (windows (), quote where.checker + " < " + quote (where.scratch + "/request.json") + " > " + quote (where.scratch + "/response.json") + " 2> " + quote (where.scratch + "/stderr.txt"))
         code = runShell command
         match code == 0
             true => answerText where
@@ -137,27 +137,39 @@ module Protocol
 
     encoded (document) = jsonEncode document ?: "the expected answer could not be encoded"
 
-    (** The package directory, its newest built checker and a scratch
-        directory, found from the working directory the suite started in. *)
-    locate () =
-        command = "(for base in . .. ../.. ../../.. ../../../.. ../../../../.. ../../../../../..; do for pkg in \"$base/src/osprey/examples/disciplines/bounded\" \"$base\"; do dir=\"$pkg/.osprey/cache/disciplines/build\"; latest=$(ls -t \"$dir\"/bounded-* 2>/dev/null | head -1); if [ -n \"$latest\" ]; then printf \"%s\\n%s\\n\" \"$pkg\" \"$latest\"; exit 0; fi; done; done; exit 1)"
-        searched = runShell (command + " > /tmp/osprey-bounded-protocol.txt 2>/dev/null")
-        placed (searched, readText "/tmp/osprey-bounded-protocol.txt")
+    (** The package directory, its built checker and a scratch directory,
+        found from the working directory the suite started in. The runner
+        clears the package's `.osprey` first, so the build directory holds the
+        one checker this build produced. *)
+    locate () = found [".", "..", "../..", "../../..", "../../../..", "../../../../..", "../../../../../.."]
 
-    placed (_searched, listing) = match length (lines listing) >= 2
-        true => packageRoot (listGet (lines listing) 0 ?: "", listGet (lines listing) 1 ?: "")
-        false => Where(package = "", checker = "", scratch = "", note = "no built checker under any candidate package directory (" + trim listing + ")")
+    // From each base, the package inside a checkout, then the base itself.
+    found (bases) = match bases
+        [] => Where(package = "", checker = "", scratch = "", note = "no built checker under any candidate package directory")
+        [base, ...rest] => inCheckout (base + "/src/osprey/examples/disciplines/bounded", base, rest)
+
+    inCheckout (package, base, rest) = match builtCheckers package
+        [] => atBase (base, rest)
+        checkers => chosen (package, checkers)
+
+    atBase (base, rest) = match builtCheckers base
+        [] => found rest
+        checkers => chosen (base, checkers)
+
+    chosen (package, checkers) = match checkers
+        [checker] => packageRoot (package, checker)
+        _ => Where(package = "", checker = "", scratch = "", note = "several built checkers under " + package + ", clear its .osprey: " + join (checkers, ", "))
+
+    builtCheckers (package) = match listDir (package + "/.osprey/cache/disciplines/build")
+        Error _ => []
+        Success entries => filterList (entries, \entry => contains (entry, "bounded-"))
 
     packageRoot (package, checker) =
         Where(package = package, checker = checker, scratch = package + "/.osprey/cache/bounded-suite", note = "")
 
-    readText (path) = match readFile path
-        Success text => text
-        Error message => message
+    quote (text) = Shell::word (windows (), text)
 
-    quote (text) = "'" + escaped text + "'"
-
-    escaped (text) = replace (text, "'", "'\\''") ?: text
+    windows () = Shell::windows ()
 
     runShell (command) = match spawnProcess (command, ignoreEvent)
         Success process => awaited process

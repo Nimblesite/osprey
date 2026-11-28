@@ -1,0 +1,15 @@
+namespace passthrough
+
+(** The checker's entry: the one response line for the request line the seam
+    writes to standard input, or nothing when no request arrives. It names
+    nothing of the testing prelude, so no TAP plan follows the response the
+    seam parses. *)
+main () =
+    handle Arith
+        overflow _op _lhs _rhs wrapped => wrapped
+        divideByZero _op _lhs => 0.0
+        remainderByZero _lhs => 0
+    line = input ()
+    match isEmpty line
+        true => cleanupProcess 0
+        false => print (Checker::answer line)

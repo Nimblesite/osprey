@@ -65,23 +65,25 @@ impl ProcessRunner {
         deadline: Instant,
     ) -> Result<PathBuf, String> {
         let output = self.artifact(discipline)?;
-        if output.is_file() {
-            return Ok(output);
+        if !output.is_file() {
+            std::fs::create_dir_all(&self.build_dir)
+                .map_err(|error| format!("cannot create {}: {error}", self.build_dir.display()))?;
+            build(&self.compiler, &discipline.checker, &output, deadline)?;
         }
-        std::fs::create_dir_all(&self.build_dir)
-            .map_err(|error| format!("cannot create {}: {error}", self.build_dir.display()))?;
-        build(&self.compiler, &discipline.checker, &output, deadline)?;
+        prune_stale(&self.build_dir, &discipline.name, &output);
         Ok(output)
     }
 
     /// The cache path of `discipline`'s checker: its name under the digests of
-    /// every build input and of the compiler itself.
+    /// every build input and of the compiler itself, with the host's executable
+    /// suffix: Windows' `cmd.exe` runs no program without `.exe`.
     fn artifact(&self, discipline: &Discipline) -> Result<PathBuf, String> {
         Ok(self.build_dir.join(format!(
-            "{}-{:016x}-{:016x}",
+            "{}-{:016x}-{:016x}{}",
             discipline.name,
             super::inputs::build_digest(discipline)?,
-            super::inputs::compiler_digest(&self.compiler)?
+            super::inputs::compiler_digest(&self.compiler)?,
+            std::env::consts::EXE_SUFFIX
         )))
     }
 }
@@ -188,6 +190,44 @@ fn compiler_command(compiler: &Path, checker: &Path, output: &Path) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     command
+}
+
+/// Remove every earlier build of discipline `name` beside `keep`: a changed
+/// input or compiler names a new binary, and the old one is never run again,
+/// so it would only pile up and leave more than one checker to choose from. A
+/// binary still running (Windows refuses to delete it) is left for next time.
+fn prune_stale(build_dir: &Path, name: &str, keep: &Path) {
+    let Ok(entries) = std::fs::read_dir(build_dir) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path != keep && is_build_of(&path, name) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
+/// Whether `path` is named as [`ProcessRunner::artifact`] names a build of
+/// discipline `name`: `name-<16 hex>-<16 hex>` and the executable suffix.
+fn is_build_of(path: &Path, name: &str) -> bool {
+    let file = path
+        .file_name()
+        .map(|file| file.to_string_lossy().into_owned());
+    let digests = file.as_deref().and_then(|file| {
+        file.strip_prefix(name)?
+            .strip_prefix('-')?
+            .strip_suffix(std::env::consts::EXE_SUFFIX)
+    });
+    digests.is_some_and(|digests| {
+        digests.len() == 33
+            && digests.char_indices().all(|(index, letter)| {
+                if index == 16 {
+                    letter == '-'
+                } else {
+                    letter.is_ascii_hexdigit()
+                }
+            })
+    })
 }
 
 /// Compile `checker` into `output`, polling like `wait` so a hung compile

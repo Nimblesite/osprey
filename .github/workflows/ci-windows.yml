@@ -40,8 +40,10 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' }}
     uses: ./.github/workflows/gpui.yml
 
-  windows-core:
-    name: Windows Core Build & Smoke Test
+  # The runtime archives and the release osprey.exe, built once. The smoke tests
+  # and corpora, and the type disciplines, run beside each other on that build.
+  windows-build:
+    name: Windows Build
     needs: changes
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
@@ -58,8 +60,8 @@ jobs:
         uses: dtolnay/rust-toolchain@1.100.0
 
       # Restored here and saved straight after the build, as winui.yml does: the combined
-      # actions/cache saves only when the whole job succeeds, so a job cancelled in the corpora
-      # threw its cold build away and the next run started just as cold.
+      # actions/cache saves only when the whole job succeeds, so a job cancelled after the
+      # build threw its cold build away and the next run started just as cold.
       - name: Restore cargo registry + target
         id: cargo-cache
         uses: actions/cache/restore@v6
@@ -72,26 +74,7 @@ jobs:
           key: ${{ runner.os }}-cargo-osprey-${{ steps.rust.outputs.cachekey }}-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
-      # gcc + winpthreads back the fiber/effects C runtime; the `clang` package
-      # provides the MinGW clang driver (`/ucrt64/bin/clang.exe`) osprey shells
-      # out to when linking — the `llvm` package ships only the LLVM tools
-      # (llc/opt), not the driver, so without `clang` osprey would fall back to
-      # the runner's system MSVC clang and fail to link the MinGW runtime.
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          path-type: inherit
-          update: true
-          # vim carries xxd: Perception's canary hands each shell line to MSYS2's sh as hex.
-          install: >-
-            make
-            vim
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-clang
-            mingw-w64-ucrt-x86_64-llvm
-            mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-openssl
-            mingw-w64-ucrt-x86_64-sqlite3
+      - uses: ./.github/actions/setup-windows-msys2
 
       # Build the C runtime archives with the MinGW toolchain. The root
       # Makefile auto-detects this MSYS2 shell (via $MSYSTEM) and runs the
@@ -134,18 +117,29 @@ jobs:
           set -euo pipefail
           ./target/release/osprey.exe --version | grep -Fx "osprey 0.0.0-dev"
 
-      # osprey.exe is a NATIVE Windows process: when it shells out to link the
-      # emitted IR it searches the Windows PATH, where the runner's system
-      # (MSVC-target) clang shadows the MSYS2 one — that clang can't link the
-      # MinGW-built runtime archive. Pin OSPREY_CC to the UCRT64 clang via a
-      # Windows-style path (cygpath -m) so native CreateProcess can find it.
-      - name: Pin the MinGW clang for osprey --run
-        shell: msys2 {0}
-        run: |
-          set -euo pipefail
-          CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
-          "$CC_PATH" --version | head -1
-          echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: osprey-windows
+          path: |
+            target/release/osprey.exe
+            src/toolchain/compiler/bin/*.a
+          retention-days: 1
+          if-no-files-found: error
+
+  windows-core:
+    name: Windows Core Smoke Test & Corpora
+    needs: [changes, windows-build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-windows-msys2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-windows
 
       # The split repositories' canaries on Windows [REPO-SPLIT-CANARY]: the main branches of
       # Nimblesite/osprey-packages (fixtures, the package frontend, the consumer flow against
@@ -197,3 +191,26 @@ jobs:
         run: |
           set -euo pipefail
           OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test src/osprey/tests --memory=arc
+
+  # [TYPES-DISCIPLINE-REFERENCE] Every reference discipline through the whole seam on
+  # Windows: each checker built by osprey.exe and spawned through cmd.exe, the
+  # round trips under GC and ARC, the rejected variants against their goldens and
+  # both checker suites. Linux CI runs the wasm32 legs; this runner has no WASI sysroot.
+  windows-disciplines:
+    name: Windows Type Disciplines
+    needs: [changes, windows-build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-windows-msys2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-windows
+
+      - name: Type disciplines (bounded, dependent, lean, passthrough)
+        shell: msys2 {0}
+        run: make _test_disciplines DISCIPLINE_WASM=0 BIN=target/release/osprey.exe OSPREY_PREBUILT=1

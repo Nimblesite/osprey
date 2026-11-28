@@ -1,0 +1,90 @@
+namespace passthrough
+
+(** Every case this package asserts about itself: the marker rewrite, the
+    stderr parser and the exact response encoding the seam parses. *)
+module Tests
+    (** Run every self-test of the checker.
+    # Examples
+    ```osprey
+    exactArithmetic Tests::run
+    ```
+    ```output
+    ok 1 - every marker spelling is rewritten and nothing else is touched
+    ok 2 - stderr becomes positioned diagnostics and nothing else
+    ok 3 - an accepted answer is the exact protocol JSON
+    ok 4 - a rejected answer is the exact protocol JSON, and no position is null
+    ok 5 - a stubbable import becomes an extern; an empty one stays resolvable
+    ok 6 - an import an extern cannot express is refused with the reason
+    1..6
+    # tests=6 passed=6 failed=0 skipped=0
+    ```
+    *)
+    export run () =
+        test ("every marker spelling is rewritten and nothing else is touched", \() => markers ())
+        test ("stderr becomes positioned diagnostics and nothing else", \() => diagnostics ())
+        test ("an accepted answer is the exact protocol JSON", \() => acceptedReply ())
+        test ("a rejected answer is the exact protocol JSON, and no position is null", \() => rejectedReplies ())
+        test ("a stubbable import becomes an extern; an empty one stays resolvable", \() => stubs ())
+        test ("an import an extern cannot express is refused with the reason", \() => refusals ())
+
+    (** Asserts the marker line `from` is rewritten to `to` with the module text after it untouched. *)
+    rewrittenMarker (from, to, rest) = expect (Marker::rewrite (from + rest), to + "\n" + rest)
+
+    markers () =
+        rewrittenMarker ("// osprey: types=passthrough\n", hmMarker, "namespace Count\n")
+        rewrittenMarker ("# osprey: types=passthrough\n", hmMarkerPython, "x = 1\n")
+        rewrittenMarker ("//osprey: types=passthrough\n", hmMarker, "")
+        expect (Marker::rewrite unmarked, unmarked)
+
+    (** Asserts `stderr`'s first diagnostic against the scratch path reads as `expected`. *)
+    firstDiagnostic (stderr, expected) = expect (described (first (Checks::diagnostics (scratch, stderr))), expected)
+
+    diagnostics () =
+        firstDiagnostic (scratchLine, "check 5 25 type mismatch: cannot unify string with int")
+        firstDiagnostic ("error: the module is ill-formed\n", "check -1 -1 error: the module is ill-formed")
+        expect (listLength (Checks::diagnostics (scratch, "\n  \n")), 0)
+    acceptedReply () = expect (Replies::accepted (sampleSignature, Erased(flavor = "ml", source = "namespace a\n")), acceptedExpected)
+
+    rejectedReplies () =
+        expect (Replies::rejected ([Diagnostic(code = codeCheck, line = 5, column = 25, message = "bad")]), rejectedExpected ())
+        expect (Replies::internal "boom", internalExpected ())
+
+    stubs () =
+        expect (describedStubs ([Imported(name = "a::Numbers", text = numbersSignature "twice : (int) -> int", omitted = [])]), "namespace a\nmodule Numbers\n    export extern twice (p0 : int) -> int\n")
+        expect (describedStubs ([Imported(name = "a::Empty", text = "signature Empty\n", omitted = [])]), "namespace a\nmodule Empty\n" + emptyStub)
+
+    refusals () =
+        refusedItem ("same<t0> : (t0) -> t0", "is polymorphic, which an `extern` declaration cannot spell")
+        refusedItem ("make : (string) -> { age: int }", "uses a record type, which an `extern` declaration cannot express")
+        expect (refusal ("make : (string) -> int", ["type Person"]), "import `a::Numbers` exports type Person, which an inferred signature names but does not describe, so the module cannot be checked on its own")
+
+    (** Asserts the one-item `Numbers` signature `item` is refused with `why`. *)
+    refusedItem (item, why) = expect (refusal (item, []), "import `Numbers` item `" + item + "` " + why)
+
+    (** The stub answer for an import of `a::Numbers` whose signature holds `items` and omits `omitted`. *)
+    refusal (items, omitted) = describedStubs ([Imported(name = "a::Numbers", text = numbersSignature items, omitted = omitted)])
+
+    (** The signature text of an imported `Numbers` module holding `items`. *)
+    numbersSignature items = "signature Numbers\n    " + items + "\n"
+
+    describedStubs imports = match Signatures::stubs imports
+        Unstubbable why => why
+        Ready text => text
+
+    described diagnostic = diagnostic.code + " " + toString diagnostic.line + " " + toString diagnostic.column + " " + diagnostic.message
+
+    first diagnostics = match diagnostics
+        [only, ..._rest] => only
+        [] => Diagnostic(code = "", line = 0, column = 0, message = "no diagnostic")
+
+    unmarked = "namespace Count\n\nmodule Ops\n    export twice x = x\n"
+    scratch = "/tmp/x.ospml"
+    scratchLine = "/tmp/x.ospml:5:25: type mismatch: cannot unify string with int\n"
+    sampleSignature = "signature M\n    twice : (int) -> int\n"
+    acceptedExpected = "{\"version\":2,\"result\":\"accepted\",\"signature\":\"signature M\\n    twice : (int) -> int\\n\",\"erased\":{\"flavor\":\"ml\",\"source\":\"namespace a\\n\"},\"diagnostics\":[]}"
+    (** The exact protocol JSON lines the replies under test must spell, built by the same `rejectedLine` the checker answers with. *)
+    rejectedExpected () = rejectedLine ("check", "5", "25", "bad")
+    internalExpected () = internalLine "boom"
+
+(** The suite's entry: every case once. *)
+main () = exactArithmetic Tests::run
