@@ -96,6 +96,13 @@
         "editor.defaultFormatter": "nimblesite.osprey"
       }
     },
+    "themes": [
+      {
+        "label": "Osprey Midnight",
+        "uiTheme": "vs-dark",
+        "path": "./themes/osprey-midnight.json"
+      }
+    ],
     "grammars": [
       {
         "language": "osprey",
@@ -945,10 +952,10 @@
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
     "vscode:prepublish": "npm run sync-icon && npm run compile && node scripts/verify-package-client.mjs && node scripts/verify-package-workspace.mjs",
-    "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check && npm run generate-abi",
+    "precompile": "npm run sync-icon && node scripts/sync-theme.mjs && node scripts/sync-profiler-contributions.mjs --check && npm run generate-abi",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
     "compile": "tsc -b && tsc -p tsconfig.webview.json",
-    "lint": "tsc -p ./ --noEmit && tsc -p tsconfig.webview.json --noEmit && node scripts/verify-unused-exports.mjs && node --test scripts/verify-unused-exports.test.mjs",
+    "lint": "tsc -p ./ --noEmit && tsc -p tsconfig.webview.json --noEmit && node scripts/verify-unused-exports.mjs && node --test scripts/verify-unused-exports.test.mjs scripts/sync-theme.test.mjs",
     "prelint": "npm run generate-abi",
     "watch": "tsc -b -w",
     "package": "vsce package && node scripts/verify-readme.mjs",

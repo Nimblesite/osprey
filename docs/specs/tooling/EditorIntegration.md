@@ -25,6 +25,29 @@ The VS Code integration is a thin client over `[LSP-TRANSPORT]`.
   publication uses the same VSIX artifacts and an independent optional-token
   job, so either registry can succeed alone.
 
+#### Colour theme `[EDITOR-VSCODE-THEME]`
+
+The extension contributes **Osprey Midnight**, a dark colour theme built from the
+[design system](../../../src/toolchain/website/design_system.md). The theme uses the
+same tokens as the website, defined in
+[`variables.css`](../../../src/toolchain/website/src/css/variables.css), so the editor
+shows the same palette as the site:
+
+- The editor, panels, widgets and the Settings editor (`settings.*`) use the
+  midnight surfaces, the cyan accent and the fine outlines.
+- Code uses the `--syntax-*` tokens, which the website's code blocks
+  ([`syntax.css`](../../../src/toolchain/website/src/css/syntax.css)) also use.
+
+During `precompile`,
+[`sync-theme.mjs`](../../../src/toolchain/vscode-extension/scripts/sync-theme.mjs)
+writes the theme to the gitignored `themes/osprey-midnight.json`. The build fails and
+names the token if a role it needs is missing. Its test checks that:
+
+- every colour is a token;
+- each Settings editor role maps to the right token;
+- every scope the Osprey grammars emit has a colour;
+- the website's code blocks use the same tokens.
+
 ### Zed `[EDITOR-ZED]`
 
 The client in `src/toolchain/zed-extension` launches the same `osprey lsp` stdio server. It registers distinct Osprey, Osprey ML and Osprey Python language IDs; ordinary Python files must retain their existing editor integration. Project membership and syntax-flavor precedence remain server responsibilities [LSP-TRANSPORT]. Default highlighting reuses the canonical Tree-sitter grammar and queries; ML/Python grammar support must be verified independently rather than claimed through the Default grammar.

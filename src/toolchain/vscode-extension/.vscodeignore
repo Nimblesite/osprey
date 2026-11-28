@@ -59,6 +59,7 @@ out/tsconfig.tsbuildinfo
 !language-configuration/**
 !language-configuration-ml.json
 !snippets/**
+!themes/**
 !package.json
 !README.md
 !LICENSE

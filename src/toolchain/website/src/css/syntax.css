@@ -3,60 +3,38 @@
    (home cards, prose, blog). Tuned for the navy Material-3 surface; mirrors
    the palette in docs/designs/prose.
    ============================================================================ */
-code[class*="language-"],
-pre[class*="language-"] {
+code[class*="language-"], pre[class*="language-"] {
   color: var(--on-surface);
   font-family: var(--font-mono);
   white-space: pre;
   tab-size: 2;
 }
 
-.token.comment,
-.token.prolog,
-.token.doctype,
-.token.cdata { color: #6272a4; font-style: italic; }
+.token.comment, .token.prolog, .token.doctype, .token.cdata { color: var(--syntax-comment); font-style: italic; }
 
 .token.punctuation { color: var(--on-surface-variant); }
 
-.token.keyword,
-.token.control,
-.token.directive,
-.token.tag,
-.token.selector { color: #ff79c6; font-weight: 600; }
+.token.keyword, .token.control, .token.directive, .token.tag, .token.selector { color: var(--syntax-keyword); font-weight: 600; }
 
-.token.function,
-.token.method { color: #50fa7b; }
+.token.function, .token.method { color: var(--syntax-function); }
 
-.token.string,
-.token.char,
-.token.attr-value,
-.token.regex { color: #f1fa8c; }
+.token.string, .token.char, .token.attr-value, .token.regex { color: var(--syntax-string); }
 
-.token.number,
-.token.boolean,
-.token.constant { color: #bd93f9; }
+.token.number, .token.boolean, .token.constant { color: var(--syntax-number); }
 
-.token.class-name,
-.token.type,
-.token.builtin,
-.token.attr-name { color: #8be9fd; }
+.token.class-name, .token.type, .token.builtin, .token.attr-name { color: var(--syntax-type); }
 
-.token.operator,
-.token.entity,
-.token.url { color: #ffb86c; }
+.token.operator, .token.entity, .token.url { color: var(--syntax-operator); }
 
-.token.variable,
-.token.property,
-.token.parameter { color: var(--on-surface); }
+.token.variable, .token.property, .token.parameter { color: var(--on-surface); }
 
-.token.important,
-.token.atrule { color: #ffb86c; font-weight: 600; }
+.token.important, .token.atrule { color: var(--syntax-operator); font-weight: 600; }
 
 .token.deleted { color: var(--error); }
-.token.inserted { color: #50fa7b; }
+.token.inserted { color: var(--syntax-function); }
 .token.italic { font-style: italic; }
 .token.bold { font-weight: 700; }
 
 /* Osprey-specific tokens from the project Prism grammar. */
-.language-osprey .token.interpolation { color: #ffb86c; }
-.language-osprey .token.interpolation .token.punctuation { color: #ffb86c; }
+.language-osprey .token.interpolation { color: var(--syntax-operator); }
+.language-osprey .token.interpolation .token.punctuation { color: var(--syntax-operator); }

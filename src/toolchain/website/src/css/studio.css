@@ -173,7 +173,7 @@ body:has(.wasm-studio) .site-footer { display: none; }
   min-height: 1.2em;
   color: var(--on-surface-variant);
 }
-.add-status.ok { color: #50fa7b; }
+.add-status.ok { color: var(--syntax-function); }
 .add-status.err { color: var(--error); }
 
 /* ── SQL console with a live highlight layer under the textarea ── */
@@ -241,7 +241,7 @@ body:has(.wasm-studio) .site-footer { display: none; }
   font-size: 0.78rem;
   color: var(--on-surface-variant);
 }
-.console-status.ok { color: #50fa7b; }
+.console-status.ok { color: var(--syntax-function); }
 .console-status.err { color: var(--error); }
 
 /* ── result table ── */

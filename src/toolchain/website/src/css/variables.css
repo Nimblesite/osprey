@@ -31,6 +31,15 @@
   --outline-variant: #3e484c;
   --error: #ffb4ab;
 
+  /* ---- Syntax (code blocks here, the VS Code theme built from this file) [EDITOR-VSCODE-THEME] ---- */
+  --syntax-comment: #6272a4;
+  --syntax-keyword: #ff79c6;
+  --syntax-function: #50fa7b;
+  --syntax-string: #f1fa8c;
+  --syntax-number: #bd93f9;
+  --syntax-type: #8be9fd;
+  --syntax-operator: #ffb86c;
+
   /* ---- Glass panel ---- */
   --glass-bg: rgba(13, 24, 54, 0.7);
   --glass-border: rgba(255, 255, 255, 0.06);

@@ -20,3 +20,7 @@ client/src/osprey-ui/generated/
 
 # Generated from the Osprey Packages design system during precompile.
 media/registry/
+
+# Generated during precompile from the design tokens (src/toolchain/website/src/css/variables.css) by
+# scripts/sync-theme.mjs. [EDITOR-VSCODE-THEME]
+themes/
