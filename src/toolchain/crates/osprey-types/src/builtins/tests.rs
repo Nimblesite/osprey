@@ -30,7 +30,9 @@ fn registry_classifies_the_compilers_ambient_builtin_inventory() {
     );
     let surface = match std::fs::read_to_string(path) {
         Ok(text) => text,
-        Err(error) => panic!("{path}: {error}; check the package manager out with `make downstream`"),
+        Err(error) => {
+            panic!("{path}: {error}; check the package manager out with `make downstream`")
+        }
     };
     for name in ambient.bound_names() {
         assert!(
